@@ -1,72 +1,67 @@
 import { useState, useMemo } from 'react';
-import { format } from 'date-fns';
-import { CalendarIcon, Check, ChevronDown, Minus, Plus, ShoppingCart, Utensils, X } from 'lucide-react';
+import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-type MealType = 'breakfast' | 'lunch' | 'dinner';
+type MealTime = 'Breakfast' | 'Lunch' | 'Dinner';
 type VegType = 'veg' | 'non-veg';
 type CuisineKey = 'indian' | 'chinese' | 'continental' | 'custom';
 type ModeKey = 'individual' | 'combo';
 
-interface MealCard {
+interface Meal {
   id: string;
-  cuisine: CuisineKey;
   name: string;
   description: string;
-  vegNonVeg: VegType;
-  type: MealType;
-  basePrice: number;
-  items: string[];
-  selected: boolean;
-  quantity: number;
-  selectedItem: string;
+  vegType: VegType;
+  mealTime: MealTime;
+  cuisine: CuisineKey;
+  price: number;
+  kitchen: string;
+  restaurant: string;
+  enabled: boolean; // This is the core toggle — employees see it only when true
+  featured: boolean;
+  quantityLimit: number | null;
 }
 
-// ─── Static Data ─────────────────────────────────────────────────────────────
+// ─── Static Meal Data ─────────────────────────────────────────────────────────
+const allMeals: Meal[] = [
+  // Indian
+  { id: 'in-veg-l', name: 'North Indian Veg Thali', description: 'Dal, paneer, roti, rice & salad', vegType: 'veg', mealTime: 'Lunch', cuisine: 'indian', price: 160, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'in-nv-l', name: 'Chicken Curry Meal', description: 'Rich chicken curry with rice & naan', vegType: 'non-veg', mealTime: 'Lunch', cuisine: 'indian', price: 190, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: 50 },
+  { id: 'in-veg-b', name: 'South Indian Breakfast', description: 'Idli, vada, dosa with sambar & chutney', vegType: 'veg', mealTime: 'Breakfast', cuisine: 'indian', price: 90, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: null },
+  { id: 'in-nv-d', name: 'Mutton Biryani', description: 'Dum-style mutton biryani with raita', vegType: 'non-veg', mealTime: 'Dinner', cuisine: 'indian', price: 240, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: true, quantityLimit: 30 },
+  { id: 'in-veg-d', name: 'Veg Biryani Dinner', description: 'Fragrant veg biryani with salan', vegType: 'veg', mealTime: 'Dinner', cuisine: 'indian', price: 180, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
 
-const cuisineItems: Record<CuisineKey, string[]> = {
-  indian: ['Dal Makhani', 'Paneer Butter Masala', 'Roti', 'Biryani', 'Chole Bhature', 'Raita', 'Rice'],
-  chinese: ['Fried Rice', 'Noodles', 'Manchurian', 'Spring Rolls', 'Momos', 'Soup'],
-  continental: ['Pasta', 'Grilled Sandwich', 'Caesar Salad', 'Club Sandwich', 'Pizza', 'Garlic Bread'],
-  custom: ['Thali Veg', 'Thali Non-Veg', 'Mini Meal', 'Executive Meal', 'Diet Meal'],
-};
+  // Chinese
+  { id: 'ch-veg-l', name: 'Chinese Veg Meal', description: 'Fried rice + veg Manchurian', vegType: 'veg', mealTime: 'Lunch', cuisine: 'chinese', price: 170, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ch-nv-l', name: 'Chilli Chicken Noodles', description: 'Hakka noodles with chilli chicken', vegType: 'non-veg', mealTime: 'Lunch', cuisine: 'chinese', price: 210, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
+  { id: 'ch-veg-b', name: 'Momos & Soup', description: 'Steam momos with hot & sour soup', vegType: 'veg', mealTime: 'Breakfast', cuisine: 'chinese', price: 120, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: true, quantityLimit: null },
+  { id: 'ch-nv-d', name: 'Kung Pao Chicken', description: 'Spicy chicken with fried rice', vegType: 'non-veg', mealTime: 'Dinner', cuisine: 'chinese', price: 230, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: 40 },
 
-const kitchenMap: Record<CuisineKey, { kitchen: string; restaurant: string; price: number }> = {
-  indian: { kitchen: 'Spice Garden', restaurant: 'Desi Flavors', price: 160 },
-  chinese: { kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', price: 180 },
-  continental: { kitchen: 'Euro Bistro', restaurant: 'The Continental', price: 220 },
-  custom: { kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', price: 150 },
-};
+  // Continental
+  { id: 'co-veg-l', name: 'Creamy Pasta Meal', description: 'Pasta with garlic bread & side salad', vegType: 'veg', mealTime: 'Lunch', cuisine: 'continental', price: 200, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
+  { id: 'co-nv-l', name: 'Grilled Chicken Plate', description: 'Grilled chicken with veggies & mash', vegType: 'non-veg', mealTime: 'Lunch', cuisine: 'continental', price: 250, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 35 },
+  { id: 'co-veg-b', name: 'Continental Breakfast', description: 'Toast, eggs, juice & fruit plate', vegType: 'veg', mealTime: 'Breakfast', cuisine: 'continental', price: 130, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: false, featured: false, quantityLimit: null },
 
-const initialMeals: MealCard[] = [
-  { id: 'in-veg', cuisine: 'indian', name: 'Indian Veg', description: 'Wholesome north-Indian veg thali', vegNonVeg: 'veg', type: 'lunch', basePrice: 160, items: cuisineItems.indian, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'in-nv', cuisine: 'indian', name: 'Indian Non-Veg', description: 'Rich non-veg curry with rice & roti', vegNonVeg: 'non-veg', type: 'lunch', basePrice: 190, items: cuisineItems.indian, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'in-bfast', cuisine: 'indian', name: 'Indian Breakfast', description: 'Idli, vada, sambar & chutney', vegNonVeg: 'veg', type: 'breakfast', basePrice: 90, items: ['Idli', 'Vada', 'Dosa', 'Upma', 'Poha'], selected: false, quantity: 1, selectedItem: '' },
-  { id: 'ch-veg', cuisine: 'chinese', name: 'Chinese Veg', description: 'Fried rice + veg Manchurian combo', vegNonVeg: 'veg', type: 'lunch', basePrice: 170, items: cuisineItems.chinese, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'ch-nv', cuisine: 'chinese', name: 'Chinese Non-Veg', description: 'Chilli chicken with noodles', vegNonVeg: 'non-veg', type: 'lunch', basePrice: 210, items: cuisineItems.chinese, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'ch-momos', cuisine: 'chinese', name: 'Momos Special', description: 'Steam or fried momos with dip', vegNonVeg: 'veg', type: 'breakfast', basePrice: 120, items: ['Veg Momos', 'Paneer Momos', 'Chicken Momos'], selected: false, quantity: 1, selectedItem: '' },
-  { id: 'co-pasta', cuisine: 'continental', name: 'Continental Veg', description: 'Creamy pasta & garlic bread', vegNonVeg: 'veg', type: 'lunch', basePrice: 200, items: cuisineItems.continental, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'co-nv', cuisine: 'continental', name: 'Continental Non-Veg', description: 'Grilled chicken with salad', vegNonVeg: 'non-veg', type: 'lunch', basePrice: 250, items: cuisineItems.continental, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'cu-std', cuisine: 'custom', name: 'Standard Meal', description: 'Balanced full meal for everyday', vegNonVeg: 'veg', type: 'lunch', basePrice: 140, items: cuisineItems.custom, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'cu-prem', cuisine: 'custom', name: 'Premium Meal', description: 'Executive meal with dessert', vegNonVeg: 'veg', type: 'lunch', basePrice: 200, items: cuisineItems.custom, selected: false, quantity: 1, selectedItem: '' },
-  { id: 'cu-diet', cuisine: 'custom', name: 'Diet Meal', description: 'Low-calorie healthy meal plan', vegNonVeg: 'veg', type: 'lunch', basePrice: 160, items: cuisineItems.custom, selected: false, quantity: 1, selectedItem: '' },
+  // Custom
+  { id: 'cu-std', name: 'Standard Meal Box', description: 'Balanced everyday full meal', vegType: 'veg', mealTime: 'Lunch', cuisine: 'custom', price: 140, kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', enabled: true, featured: false, quantityLimit: null },
+  { id: 'cu-prem', name: 'Executive Meal Box', description: 'Premium meal with dessert & beverage', vegType: 'veg', mealTime: 'Lunch', cuisine: 'custom', price: 200, kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', enabled: false, featured: false, quantityLimit: 20 },
+  { id: 'cu-diet', name: 'Diet Meal Plan', description: 'Low-calorie healthy option', vegType: 'veg', mealTime: 'Lunch', cuisine: 'custom', price: 160, kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', enabled: true, featured: false, quantityLimit: null },
 ];
 
-const comboMeals: MealCard[] = [
-  { id: 'combo-1', cuisine: 'indian', name: 'Indian Feast Combo', description: 'Dal + Paneer + Roti + Rice + Dessert', vegNonVeg: 'veg', type: 'lunch', basePrice: 280, items: ['Full Combo'], selected: false, quantity: 1, selectedItem: 'Full Combo' },
-  { id: 'combo-2', cuisine: 'chinese', name: 'Dragon Combo', description: 'Noodles + Fried Rice + Manchurian + Soup', vegNonVeg: 'veg', type: 'lunch', basePrice: 320, items: ['Full Combo'], selected: false, quantity: 1, selectedItem: 'Full Combo' },
-  { id: 'combo-3', cuisine: 'continental', name: 'Euro Combo', description: 'Pasta + Salad + Garlic Bread + Dessert', vegNonVeg: 'veg', type: 'lunch', basePrice: 380, items: ['Full Combo'], selected: false, quantity: 1, selectedItem: 'Full Combo' },
-  { id: 'combo-4', cuisine: 'custom', name: 'Office Power Combo', description: 'Full meal + snack + beverage', vegNonVeg: 'veg', type: 'lunch', basePrice: 240, items: ['Full Combo'], selected: false, quantity: 1, selectedItem: 'Full Combo' },
+const comboMeals: Meal[] = [
+  { id: 'combo-1', name: 'Indian Feast Combo', description: 'Dal + Paneer + Roti + Rice + Dessert', vegType: 'veg', mealTime: 'Lunch', cuisine: 'indian', price: 280, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'combo-2', name: 'Dragon Power Combo', description: 'Noodles + Fried Rice + Manchurian + Soup', vegType: 'veg', mealTime: 'Lunch', cuisine: 'chinese', price: 320, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
+  { id: 'combo-3', name: 'Euro Combo Platter', description: 'Pasta + Salad + Garlic Bread + Dessert', vegType: 'veg', mealTime: 'Lunch', cuisine: 'continental', price: 380, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 25 },
+  { id: 'combo-4', name: 'Office Power Combo', description: 'Full meal + snack + beverage', vegType: 'veg', mealTime: 'Lunch', cuisine: 'custom', price: 240, kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', enabled: false, featured: false, quantityLimit: null },
+  { id: 'combo-5', name: 'Non-Veg Feast Combo', description: 'Chicken + mutton + naan + rice + dessert', vegType: 'non-veg', mealTime: 'Dinner', cuisine: 'indian', price: 420, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: 15 },
 ];
 
 const cuisineTabs: { key: CuisineKey; label: string; emoji: string }[] = [
@@ -76,463 +71,476 @@ const cuisineTabs: { key: CuisineKey; label: string; emoji: string }[] = [
   { key: 'custom', label: 'Custom', emoji: '🍱' },
 ];
 
-const cities = ['Pune', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai'];
+const mealTimeFilters: { key: MealTime | 'all'; label: string }[] = [
+  { key: 'all', label: 'All Times' },
+  { key: 'Breakfast', label: 'Breakfast' },
+  { key: 'Lunch', label: 'Lunch' },
+  { key: 'Dinner', label: 'Dinner' },
+];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
 function VegBadge({ type }: { type: VegType }) {
   return (
     <span className={cn(
-      'inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border',
+      'inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border',
       type === 'veg'
-        ? 'border-success text-success'
-        : 'border-destructive text-destructive',
+        ? 'border-success text-success bg-success/5'
+        : 'border-destructive text-destructive bg-destructive/5',
     )}>
       <span className={cn('w-2 h-2 rounded-full', type === 'veg' ? 'bg-success' : 'bg-destructive')} />
-      {type === 'veg' ? 'VEG' : 'N-VEG'}
+      {type === 'veg' ? 'VEG' : 'NON-VEG'}
     </span>
   );
 }
 
-function TypeBadge({ type }: { type: MealType }) {
-  const map: Record<MealType, string> = {
-    breakfast: 'bg-warning/10 text-warning',
-    lunch: 'bg-info/10 text-info',
-    dinner: 'bg-primary/10 text-primary',
+function MealTimeBadge({ time }: { time: MealTime }) {
+  const map: Record<MealTime, string> = {
+    Breakfast: 'bg-warning/10 text-warning border-warning/20',
+    Lunch: 'bg-info/10 text-info border-info/20',
+    Dinner: 'bg-primary/10 text-primary border-primary/20',
   };
   return (
-    <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize', map[type])}>
-      {type}
+    <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border capitalize', map[time])}>
+      {time}
     </span>
   );
 }
 
-interface MealCardProps {
-  meal: MealCard;
-  onToggle: () => void;
-  onQtyChange: (delta: number) => void;
-  onItemChange: (v: string) => void;
-  onTypeChange: (v: MealType) => void;
+interface MealToggleCardProps {
+  meal: Meal;
+  onToggle: (id: string) => void;
+  onQuantityLimitChange: (id: string, val: number | null) => void;
 }
 
-function MealCardComponent({ meal, onToggle, onQtyChange, onItemChange, onTypeChange }: MealCardProps) {
-  const info = kitchenMap[meal.cuisine];
+function MealToggleCard({ meal, onToggle, onQuantityLimitChange }: MealToggleCardProps) {
+  const [editingQty, setEditingQty] = useState(false);
+
   return (
-    <div
-      className={cn(
-        'relative rounded-2xl border bg-card transition-all duration-200 cursor-pointer group',
-        meal.selected
-          ? 'border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.15)] shadow-lg'
-          : 'border-border hover:shadow-md hover:-translate-y-0.5',
-      )}
-      onClick={onToggle}
-    >
-      {/* Selection indicator */}
-      <div className={cn(
-        'absolute top-3 right-3 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
-        meal.selected ? 'border-primary bg-primary' : 'border-border bg-background group-hover:border-primary/50',
-      )}>
-        {meal.selected && <Check className="w-3 h-3 text-primary-foreground" />}
-      </div>
+    <div className={cn(
+      'relative rounded-xl border bg-card transition-all duration-200 overflow-hidden',
+      meal.enabled
+        ? 'border-border shadow-sm'
+        : 'border-border/50 opacity-60',
+    )}>
+      {/* Status strip */}
+      <div className={cn('h-1 w-full', meal.enabled ? 'bg-success' : 'bg-muted')} />
 
       <div className="p-4">
-        {/* Header */}
-        <div className="flex items-start gap-2 pr-6 mb-2">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm text-card-foreground leading-tight">{meal.name}</p>
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{meal.description}</p>
-          </div>
-        </div>
-
-        {/* Tags */}
-        <div className="flex items-center gap-1.5 flex-wrap mb-3">
-          <VegBadge type={meal.vegNonVeg} />
-          <TypeBadge type={meal.type} />
-        </div>
-
-        {/* Price & Kitchen */}
-        <div className="flex items-center justify-between">
-          <span className="text-base font-bold text-primary">₹{meal.basePrice}</span>
-          <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{info.kitchen}</span>
-        </div>
-
-        {/* Expanded controls when selected */}
-        {meal.selected && (
-          <div
-            className="mt-3 pt-3 border-t border-border space-y-2"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Item select */}
-            {meal.items.length > 1 && (
-              <Select value={meal.selectedItem} onValueChange={onItemChange}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select item" />
-                </SelectTrigger>
-                <SelectContent>
-                  {meal.items.map(item => (
-                    <SelectItem key={item} value={item} className="text-xs">{item}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            {/* Meal type */}
-            <Select value={meal.type} onValueChange={v => onTypeChange(v as MealType)}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="breakfast" className="text-xs">Breakfast</SelectItem>
-                <SelectItem value="lunch" className="text-xs">Lunch</SelectItem>
-                <SelectItem value="dinner" className="text-xs">Dinner</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Quantity stepper */}
-            <div className="flex items-center justify-between bg-muted rounded-lg px-2 py-1">
-              <span className="text-xs text-muted-foreground">Qty</span>
-              <div className="flex items-center gap-2">
-                <button
-                  className="w-6 h-6 rounded-md bg-background border border-border flex items-center justify-center hover:border-primary transition-colors"
-                  onClick={() => onQtyChange(-1)}
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-                <span className="text-sm font-semibold w-6 text-center">{meal.quantity}</span>
-                <button
-                  className="w-6 h-6 rounded-md bg-background border border-border flex items-center justify-center hover:border-primary transition-colors"
-                  onClick={() => onQtyChange(1)}
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-sm font-semibold text-card-foreground leading-tight">{meal.name}</p>
+              {meal.featured && (
+                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Featured</Badge>
+              )}
             </div>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{meal.description}</p>
           </div>
-        )}
+          {/* Availability toggle — the core control */}
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <Switch
+              checked={meal.enabled}
+              onCheckedChange={() => onToggle(meal.id)}
+              className="data-[state=checked]:bg-success"
+            />
+            <span className={cn('text-[9px] font-semibold', meal.enabled ? 'text-success' : 'text-muted-foreground')}>
+              {meal.enabled ? 'ON' : 'OFF'}
+            </span>
+          </div>
+        </div>
+
+        {/* Tags row */}
+        <div className="flex items-center gap-1.5 flex-wrap mt-2">
+          <VegBadge type={meal.vegType} />
+          <MealTimeBadge time={meal.mealTime} />
+        </div>
+
+        <Separator className="my-3" />
+
+        {/* Bottom info */}
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-base font-bold text-primary">₹{meal.price}</p>
+            <p className="text-[10px] text-muted-foreground">{meal.kitchen}</p>
+          </div>
+
+          {/* Quantity limit control */}
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[10px] text-muted-foreground font-medium">Qty Limit</span>
+            {editingQty ? (
+              <Input
+                type="number"
+                min={1}
+                autoFocus
+                defaultValue={meal.quantityLimit ?? ''}
+                placeholder="Unlimited"
+                className="h-7 w-24 text-xs text-right"
+                onBlur={e => {
+                  const val = parseInt(e.target.value);
+                  onQuantityLimitChange(meal.id, isNaN(val) || val < 1 ? null : val);
+                  setEditingQty(false);
+                }}
+              />
+            ) : (
+              <button
+                onClick={() => setEditingQty(true)}
+                className="text-xs font-semibold text-foreground hover:text-primary transition-colors"
+              >
+                {meal.quantityLimit ? `${meal.quantityLimit} meals` : 'Unlimited'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Visibility status bar */}
+        <div className={cn(
+          'mt-3 rounded-lg px-3 py-2 flex items-center gap-2 text-xs',
+          meal.enabled
+            ? 'bg-success/8 border border-success/20'
+            : 'bg-muted/50 border border-border',
+        )}>
+          {meal.enabled ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+              <span className="text-success font-medium">Visible to employees in app</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Hidden from employee app</span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-export default function OrderSettings() {
-  const { toast } = useToast();
-  const [selectedCity, setSelectedCity] = useState('Pune');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const [orderingEnabled, setOrderingEnabled] = useState(true);
-  const [mode, setMode] = useState<ModeKey>('individual');
-  const [activeCuisine, setActiveCuisine] = useState<CuisineKey>('indian');
-  const [meals, setMeals] = useState<MealCard[]>(initialMeals);
-  const [combos, setCombos] = useState<MealCard[]>(comboMeals);
-  const [saving, setSaving] = useState(false);
-
-  const currentList = mode === 'individual' ? meals : combos;
-  const setCurrentList = mode === 'individual' ? setMeals : setCombos;
-
-  const visibleMeals = currentList.filter(m => m.cuisine === activeCuisine);
-  const selectedMeals = currentList.filter(m => m.selected);
-
-  const totalQty = selectedMeals.reduce((s, m) => s + m.quantity, 0);
-  const totalCost = selectedMeals.reduce((s, m) => s + m.quantity * m.basePrice, 0);
-
-  const updateMeal = (id: string, patch: Partial<MealCard>) => {
-    setCurrentList(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m));
-  };
-
-  const toggleMeal = (id: string) => {
-    setCurrentList(prev => prev.map(m =>
-      m.id === id ? { ...m, selected: !m.selected, quantity: !m.selected ? 1 : m.quantity } : m
-    ));
-  };
-
-  const handleQty = (id: string, delta: number) => {
-    setCurrentList(prev => prev.map(m =>
-      m.id === id ? { ...m, quantity: Math.max(1, m.quantity + delta) } : m
-    ));
-  };
-
-  const removeFromSummary = (id: string) => updateMeal(id, { selected: false });
-
-  const handleConfirm = async () => {
-    if (selectedMeals.length === 0) return;
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setSaving(false);
-    toast({
-      title: '🎉 Order Scheduled!',
-      description: `${selectedMeals.length} meal(s) for ${format(selectedDate, 'dd MMM yyyy')}. Kitchen & Super Admin notified.`,
-    });
-    setMeals(initialMeals);
-    setCombos(comboMeals);
-  };
-
-  // Group selected meals by cuisine for summary
-  const groupedSummary = useMemo(() => {
-    const groups: Record<string, MealCard[]> = {};
-    selectedMeals.forEach(m => {
-      if (!groups[m.cuisine]) groups[m.cuisine] = [];
-      groups[m.cuisine].push(m);
-    });
-    return groups;
-  }, [selectedMeals]);
-
-  const selectedCuisines = [...new Set(selectedMeals.map(m => m.cuisine))];
+// ─── Stats Bar ────────────────────────────────────────────────────────────────
+function StatsBar({ meals }: { meals: Meal[] }) {
+  const total = meals.length;
+  const enabled = meals.filter(m => m.enabled).length;
+  const disabled = total - enabled;
+  const veg = meals.filter(m => m.vegType === 'veg').length;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="grid grid-cols-4 gap-3">
+      {[
+        { label: 'Total Meals', value: total, color: 'text-foreground' },
+        { label: 'Available to Employees', value: enabled, color: 'text-success' },
+        { label: 'Hidden from Employees', value: disabled, color: 'text-destructive' },
+        { label: 'Veg Options', value: veg, color: 'text-success' },
+      ].map(s => (
+        <div key={s.label} className="bg-card border border-border rounded-xl px-4 py-3">
+          <p className={cn('text-2xl font-bold', s.color)}>{s.value}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* ── Top Header Bar ─────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 pb-5 border-b border-border">
-        {/* Left: title + badge */}
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function OrderSettings() {
+  const { toast } = useToast();
+  const [mode, setMode] = useState<ModeKey>('individual');
+  const [activeCuisine, setActiveCuisine] = useState<CuisineKey>('indian');
+  const [activeMealTime, setActiveMealTime] = useState<MealTime | 'all'>('all');
+  const [search, setSearch] = useState('');
+  const [vegFilter, setVegFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
+  const [saving, setSaving] = useState(false);
+
+  const [individualMeals, setIndividualMeals] = useState<Meal[]>(allMeals);
+  const [comboMealsList, setComboMealsList] = useState<Meal[]>(comboMeals);
+
+  const currentMeals = mode === 'individual' ? individualMeals : comboMealsList;
+  const setCurrentMeals = mode === 'individual' ? setIndividualMeals : setComboMealsList;
+
+  // Filter visible meals
+  const visibleMeals = useMemo(() => {
+    return currentMeals.filter(m => {
+      if (m.cuisine !== activeCuisine) return false;
+      if (activeMealTime !== 'all' && m.mealTime !== activeMealTime) return false;
+      if (vegFilter !== 'all' && m.vegType !== vegFilter) return false;
+      if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [currentMeals, activeCuisine, activeMealTime, vegFilter, search]);
+
+  // Stats for current mode
+  const stats = useMemo(() => currentMeals, [currentMeals]);
+
+  const toggleMeal = (id: string) => {
+    setCurrentMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
+  };
+
+  const setQtyLimit = (id: string, val: number | null) => {
+    setCurrentMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
+  };
+
+  // Cuisine counts for tabs
+  const cuisineCounts = useMemo(() => {
+    const counts: Record<CuisineKey, { total: number; enabled: number }> = {
+      indian: { total: 0, enabled: 0 },
+      chinese: { total: 0, enabled: 0 },
+      continental: { total: 0, enabled: 0 },
+      custom: { total: 0, enabled: 0 },
+    };
+    currentMeals.forEach(m => {
+      counts[m.cuisine].total++;
+      if (m.enabled) counts[m.cuisine].enabled++;
+    });
+    return counts;
+  }, [currentMeals]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await new Promise(r => setTimeout(r, 900));
+    setSaving(false);
+    const enabledCount = currentMeals.filter(m => m.enabled).length;
+    toast({
+      title: '✅ Availability Saved',
+      description: `${enabledCount} meal(s) are now visible to your employees.`,
+    });
+  };
+
+  const enableAll = () => setCurrentMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: true } : m));
+  const disableAll = () => setCurrentMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: false } : m));
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Page Header ───────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-5 border-b border-border">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Utensils className="w-4 h-4 text-primary" />
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <ToggleLeft className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-base font-semibold text-foreground">Order Settings</h1>
-            <p className="text-xs text-muted-foreground">Schedule meals for your team</p>
+            <h1 className="text-base font-semibold text-foreground">Meal Availability Control</h1>
+            <p className="text-xs text-muted-foreground">Enable or disable meals visible to employees in their app</p>
           </div>
-          <Badge variant="secondary" className="shrink-0 text-xs font-medium">TekMeals Inc.</Badge>
+          <Badge variant="secondary" className="shrink-0 text-xs font-medium hidden sm:flex">TekMeals Inc.</Badge>
         </div>
-
-        {/* Right: controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* City */}
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="h-9 w-32 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {cities.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          {/* Date picker */}
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="h-9 text-xs gap-2 px-3">
-                <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                {format(selectedDate, 'dd MMM yyyy')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={d => { if (d) { setSelectedDate(d); setCalendarOpen(false); } }}
-                initialFocus
-                className={cn('p-3 pointer-events-auto')}
-              />
-            </PopoverContent>
-          </Popover>
-
-          {/* Enable ordering toggle */}
-          <div className="flex items-center gap-2 px-3 h-9 rounded-lg border border-border bg-card">
-            <span className="text-xs font-medium text-muted-foreground">Ordering</span>
-            <Switch checked={orderingEnabled} onCheckedChange={setOrderingEnabled} />
-          </div>
-
-          {/* Save */}
-          <Button
-            className="h-9 px-4 text-xs font-semibold"
-            onClick={handleConfirm}
-            disabled={selectedMeals.length === 0 || saving || !orderingEnabled}
-          >
-            {saving ? 'Saving…' : 'Confirm Order'}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
       </div>
 
-      {/* ── Main 2-col layout ──────────────────────────────────────────── */}
-      <div className="flex gap-5 flex-1 min-h-0 items-start">
+      {/* ── Info Banner ───────────────────────────────────────────────── */}
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
+        <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
+        <p className="text-xs text-info/90 leading-relaxed">
+          <strong>How it works:</strong> Toggle meals ON to make them visible to employees in their ordering app. 
+          Toggle OFF to hide them. Set quantity limits to cap how many can be ordered per day. 
+          Changes take effect immediately after saving.
+        </p>
+      </div>
 
-        {/* ── LEFT: Meal Configuration (70%) ─────────────────────────── */}
+      {/* ── Stats ─────────────────────────────────────────────────────── */}
+      <StatsBar meals={stats} />
+
+      {/* ── Mode Segmented Control ────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-xl w-fit">
+        {(['individual', 'combo'] as ModeKey[]).map(m => (
+          <button
+            key={m}
+            onClick={() => { setMode(m); setActiveCuisine('indian'); setActiveMealTime('all'); setSearch(''); }}
+            className={cn(
+              'px-5 py-2 rounded-lg text-xs font-semibold transition-all capitalize',
+              mode === m
+                ? 'bg-card shadow text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m === 'individual' ? '🍽 Individual Meals' : '🎁 Combo Meals'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 2-column layout ───────────────────────────────────────────── */}
+      <div className="flex gap-5 items-start">
+
+        {/* LEFT: Meal Configuration */}
         <div className="flex-1 min-w-0 space-y-4">
-
-          {/* Mode segmented control */}
-          <div className="flex items-center gap-1 p-1 bg-muted rounded-xl w-fit">
-            {(['individual', 'combo'] as ModeKey[]).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize',
-                  mode === m
-                    ? 'bg-card shadow text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {m === 'individual' ? 'Individual Meals' : 'Combo Meals'}
-              </button>
-            ))}
-          </div>
 
           {/* Cuisine pill tabs */}
           <div className="flex items-center gap-2 flex-wrap">
-            {cuisineTabs.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveCuisine(tab.key)}
-                className={cn(
-                  'flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all',
-                  activeCuisine === tab.key
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                    : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground bg-card',
-                )}
-              >
-                <span>{tab.emoji}</span>
-                {tab.label}
-                {currentList.filter(m => m.cuisine === tab.key && m.selected).length > 0 && (
+            {cuisineTabs.map(tab => {
+              const count = cuisineCounts[tab.key];
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveCuisine(tab.key)}
+                  className={cn(
+                    'flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all',
+                    activeCuisine === tab.key
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground bg-card',
+                  )}
+                >
+                  <span>{tab.emoji}</span>
+                  {tab.label}
                   <span className={cn(
-                    'ml-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold',
-                    activeCuisine === tab.key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary text-primary-foreground',
+                    'text-[9px] font-bold px-1.5 py-0.5 rounded-full',
+                    activeCuisine === tab.key
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'bg-success/10 text-success',
                   )}>
-                    {currentList.filter(m => m.cuisine === tab.key && m.selected).length}
+                    {count.enabled}/{count.total}
                   </span>
-                )}
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Meal grid */}
+          {/* Filters row */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search meals..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+
+            {/* Meal time filter */}
+            <div className="flex items-center gap-1 p-0.5 bg-muted rounded-lg">
+              {mealTimeFilters.map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setActiveMealTime(f.key)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                    activeMealTime === f.key
+                      ? 'bg-card shadow text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Veg/Non-veg filter */}
+            <Select value={vegFilter} onValueChange={v => setVegFilter(v as typeof vegFilter)}>
+              <SelectTrigger className="h-9 w-36 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All Types</SelectItem>
+                <SelectItem value="veg" className="text-xs">🟢 Veg Only</SelectItem>
+                <SelectItem value="non-veg" className="text-xs">🔴 Non-Veg Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Bulk actions for this cuisine */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground font-medium">
+              {visibleMeals.length} meal{visibleMeals.length !== 1 ? 's' : ''} shown
+              {' · '}
+              <span className="text-success">{visibleMeals.filter(m => m.enabled).length} enabled</span>
+              {' · '}
+              <span className="text-muted-foreground">{visibleMeals.filter(m => !m.enabled).length} disabled</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={enableAll}>
+                Enable All
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={disableAll}>
+                Disable All
+              </Button>
+            </div>
+          </div>
+
+          {/* Meal Grid */}
           {visibleMeals.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {visibleMeals.map(meal => (
-                <MealCardComponent
+                <MealToggleCard
                   key={meal.id}
                   meal={meal}
-                  onToggle={() => toggleMeal(meal.id)}
-                  onQtyChange={delta => handleQty(meal.id, delta)}
-                  onItemChange={v => updateMeal(meal.id, { selectedItem: v })}
-                  onTypeChange={v => updateMeal(meal.id, { type: v })}
+                  onToggle={toggleMeal}
+                  onQuantityLimitChange={setQtyLimit}
                 />
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-border bg-muted/30">
-              <Utensils className="w-10 h-10 text-muted-foreground/40 mb-3" />
-              <p className="text-sm font-medium text-muted-foreground">No meals in this category</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Try another cuisine tab</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-border bg-muted/20">
+              <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-muted-foreground">No meals match filters</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
             </div>
           )}
         </div>
 
-        {/* ── RIGHT: Sticky Summary Panel (30%) ──────────────────────── */}
-        <div className="w-72 xl:w-80 shrink-0 sticky top-4">
-          <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        {/* RIGHT: Sticky Summary Panel */}
+        <div className="w-64 xl:w-72 shrink-0 sticky top-4 space-y-3">
 
-            {/* Header */}
-            <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">Order Summary</span>
-              {selectedMeals.length > 0 && (
-                <Badge className="ml-auto text-[10px] h-5">{selectedMeals.length}</Badge>
-              )}
+          {/* Availability Summary */}
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+              <ChefHat className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Availability Summary</span>
             </div>
-
-            {/* Summary body */}
             <div className="p-4 space-y-3">
-
-              {/* Date & city meta */}
-              <div className="rounded-lg bg-muted/50 px-3 py-2 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Date</span>
-                  <span className="font-medium text-foreground">{format(selectedDate, 'dd MMM yyyy (EEE)')}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">City</span>
-                  <span className="font-medium text-foreground">{selectedCity}</span>
-                </div>
-              </div>
-
-              {/* Selected meals or empty state */}
-              {selectedMeals.length === 0 ? (
-                <div className="text-center py-8">
-                  <ShoppingCart className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">No meals selected</p>
-                  <p className="text-[11px] text-muted-foreground/60 mt-0.5">Click cards to add meals</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {Object.entries(groupedSummary).map(([cuisine, items]) => (
-                    <div key={cuisine}>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 capitalize">
-                        {cuisineTabs.find(t => t.key === cuisine)?.emoji} {cuisine}
-                      </p>
-                      <div className="space-y-1">
-                        {items.map(meal => (
-                          <div key={meal.id} className="flex items-center gap-2 text-xs">
-                            <VegBadge type={meal.vegNonVeg} />
-                            <span className="flex-1 text-foreground truncate">{meal.name}</span>
-                            <span className="text-muted-foreground shrink-0">×{meal.quantity}</span>
-                            <span className="text-primary font-semibold shrink-0">₹{meal.basePrice * meal.quantity}</span>
-                            <button
-                              onClick={() => removeFromSummary(meal.id)}
-                              className="text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+              {cuisineTabs.map(tab => {
+                const count = cuisineCounts[tab.key];
+                const pct = count.total > 0 ? Math.round((count.enabled / count.total) * 100) : 0;
+                return (
+                  <div key={tab.key}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-foreground font-medium">{tab.emoji} {tab.label}</span>
+                      <span className="text-muted-foreground">{count.enabled}/{count.total}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedMeals.length > 0 && (
-                <>
-                  <Separator />
-
-                  {/* Kitchen assignments */}
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Kitchens</p>
-                    {selectedCuisines.map(c => {
-                      const info = kitchenMap[c as CuisineKey];
-                      return (
-                        <div key={c} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">{info.kitchen}</span>
-                          <span className="text-foreground font-medium">{info.restaurant}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <Separator />
-
-                  {/* Totals */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Total Qty</span>
-                      <span className="font-semibold text-foreground">{totalQty} meals</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-foreground">Estimated Cost</span>
-                      <span className="text-primary">₹{totalCost.toLocaleString('en-IN')}</span>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn('h-full rounded-full transition-all duration-300', pct === 100 ? 'bg-success' : pct > 50 ? 'bg-warning' : 'bg-destructive')}
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
-                </>
-              )}
-            </div>
-
-            {/* CTA footer */}
-            <div className="px-4 pb-4">
-              <Button
-                className="w-full h-9 text-xs font-semibold"
-                disabled={selectedMeals.length === 0 || saving || !orderingEnabled}
-                onClick={handleConfirm}
-              >
-                {saving ? 'Confirming…' : selectedMeals.length === 0 ? 'Select meals to confirm' : `Confirm ${selectedMeals.length} Meal${selectedMeals.length > 1 ? 's' : ''}`}
-              </Button>
-              {!orderingEnabled && (
-                <p className="text-[10px] text-muted-foreground text-center mt-2">
-                  Enable ordering toggle to confirm
-                </p>
-              )}
+                );
+              })}
             </div>
           </div>
+
+          {/* Quick Guide */}
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Quick Guide</span>
+            </div>
+            <div className="p-4 space-y-3">
+              {[
+                { icon: '🟢', text: 'Green status = meal visible to employees' },
+                { icon: '⚫', text: 'Grey status = meal hidden from employee app' },
+                { icon: '🔢', text: 'Qty limit caps how many can order daily' },
+                { icon: '💾', text: 'Click "Save Changes" to apply updates' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-sm shrink-0">{item.icon}</span>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Save CTA */}
+          <Button
+            className="w-full h-9 text-xs font-semibold"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Saving Changes…' : '💾 Save Availability Settings'}
+          </Button>
         </div>
       </div>
     </div>
