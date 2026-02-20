@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { productsApi } from '@/services/api';
 import { Product, City, Kitchen, ProductCategory } from '@/types';
 import AddProductModal from '@/components/products/AddProductModal';
+import ProductViewModal from '@/components/products/ProductViewModal';
+import ProductEditModal from '@/components/products/ProductEditModal';
 
 const categoryLabels: Record<ProductCategory, string> = {
   breakfast: 'Breakfast',
@@ -34,6 +36,8 @@ export default function Products() {
   const [availabilityFilter, setAvailabilityFilter] = useState<boolean | undefined>(undefined);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [viewProduct, setViewProduct] = useState<Product | null>(null);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -110,6 +114,11 @@ export default function Products() {
   const handleAddSuccess = (product: Product) => {
     setProducts(prev => [product, ...prev]);
     setShowAddModal(false);
+  };
+
+  const handleEditSave = (updated: Product) => {
+    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    setEditProduct(null);
   };
 
   const formatCurrency = (amount: number) =>
@@ -292,10 +301,10 @@ export default function Products() {
                   </div>
                   {/* Hover actions */}
                   <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => toast({ title: `Viewing ${product.name}` })}>
+                    <Button size="sm" variant="secondary" onClick={() => setViewProduct(product)}>
                       <Eye className="h-4 w-4 mr-1" /> View
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => toast({ title: `Editing ${product.name}` })}>
+                    <Button size="sm" variant="secondary" onClick={() => setEditProduct(product)}>
                       <Edit className="h-4 w-4 mr-1" /> Edit
                     </Button>
                   </div>
@@ -304,7 +313,6 @@ export default function Products() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <h3 className="font-medium truncate">{product.name}</h3>
-                      <p className="text-sm text-muted-foreground">{product.kitchenName}</p>
                       <p className="text-xs text-muted-foreground">{product.city}</p>
                     </div>
                     <p className="text-lg font-bold text-primary shrink-0">{formatCurrency(product.price)}</p>
@@ -331,6 +339,17 @@ export default function Products() {
         onSuccess={handleAddSuccess}
         cities={cities}
         kitchens={kitchens}
+      />
+      <ProductViewModal
+        open={!!viewProduct}
+        onClose={() => setViewProduct(null)}
+        product={viewProduct}
+      />
+      <ProductEditModal
+        open={!!editProduct}
+        onClose={() => setEditProduct(null)}
+        product={editProduct}
+        onSave={handleEditSave}
       />
     </div>
   );
