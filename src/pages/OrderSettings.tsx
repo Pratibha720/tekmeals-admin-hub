@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2 } from 'lucide-react';
-import { format, addMonths, eachDayOfInterval, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
+import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2, Minus } from 'lucide-react';
+import { format, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -22,13 +22,15 @@ type VegType = 'veg' | 'non-veg';
 type CuisineKey = 'indian' | 'chinese' | 'continental' | 'custom';
 type ModeKey = 'individual' | 'combo';
 type ScheduleMode = 'monthly' | 'custom';
+type MealType = 'individual' | 'combo';
 
 interface Meal {
   id: string;
   name: string;
   description: string;
   vegType: VegType;
-  mealTimes: MealTime[]; // now an array — admin can choose which times
+  mealTimes: MealTime[];
+  mealType: MealType;
   cuisine: CuisineKey;
   price: number;
   kitchen: string;
@@ -36,6 +38,7 @@ interface Meal {
   enabled: boolean;
   featured: boolean;
   quantityLimit: number | null;
+  comboItems?: { mealId: string; qty: number }[];
 }
 
 interface CustomMealItem {
@@ -55,30 +58,70 @@ interface CustomMealEntry {
   enabled: boolean;
 }
 
-// ─── Static Meal Data ─────────────────────────────────────────────────────────
-const allMeals: Meal[] = [
-  { id: 'in-veg-l', name: 'North Indian Veg Thali', description: 'Dal, paneer, roti, rice & salad', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'indian', price: 160, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
-  { id: 'in-nv-l', name: 'Chicken Curry Meal', description: 'Rich chicken curry with rice & naan', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], cuisine: 'indian', price: 190, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: 50 },
-  { id: 'in-veg-b', name: 'South Indian Breakfast', description: 'Idli, vada, dosa with sambar & chutney', vegType: 'veg', mealTimes: ['Breakfast'], cuisine: 'indian', price: 90, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: null },
-  { id: 'in-nv-d', name: 'Mutton Biryani', description: 'Dum-style mutton biryani with raita', vegType: 'non-veg', mealTimes: ['Dinner'], cuisine: 'indian', price: 240, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: true, quantityLimit: 30 },
-  { id: 'in-veg-d', name: 'Veg Biryani Dinner', description: 'Fragrant veg biryani with salan', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], cuisine: 'indian', price: 180, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+// ─── Standalone Individual Meal Data ──────────────────────────────────────────
+const allIndividualMeals: Meal[] = [
+  // Indian
+  { id: 'ind-roti', name: 'Roti', description: 'Freshly made wheat roti', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 10, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-dal', name: 'Dal', description: 'Yellow dal tadka', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 40, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-rice', name: 'Steamed Rice', description: 'Plain basmati rice', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 30, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-paneer', name: 'Paneer Bhaji', description: 'Paneer cooked in rich gravy', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 70, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-salad', name: 'Salad', description: 'Fresh mixed salad', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 20, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-chaas', name: 'Chaas', description: 'Buttermilk with spices', vegType: 'veg', mealTimes: ['Lunch'], mealType: 'individual', cuisine: 'indian', price: 15, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: null },
+  { id: 'ind-sweet', name: 'Sweet / Dessert', description: 'Daily special dessert', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 25, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-chicken', name: 'Chicken Curry', description: 'Rich chicken curry', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'indian', price: 90, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: 50 },
+  { id: 'ind-egg', name: 'Egg Bhurji', description: 'Scrambled eggs Indian style', vegType: 'non-veg', mealTimes: ['Breakfast'], mealType: 'individual', cuisine: 'indian', price: 40, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: null },
+  { id: 'ind-idli', name: 'Idli (2 pcs)', description: 'Steamed rice cakes with sambar', vegType: 'veg', mealTimes: ['Breakfast'], mealType: 'individual', cuisine: 'indian', price: 35, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-paratha', name: 'Aloo Paratha', description: 'Stuffed potato paratha', vegType: 'veg', mealTimes: ['Breakfast'], mealType: 'individual', cuisine: 'indian', price: 40, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ind-mutton', name: 'Mutton Rogan Josh', description: 'Slow-cooked mutton in spices', vegType: 'non-veg', mealTimes: ['Dinner'], mealType: 'individual', cuisine: 'indian', price: 120, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: true, quantityLimit: 30 },
 
-  { id: 'ch-veg-l', name: 'Chinese Veg Meal', description: 'Fried rice + veg Manchurian', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'chinese', price: 170, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
-  { id: 'ch-nv-l', name: 'Chilli Chicken Noodles', description: 'Hakka noodles with chilli chicken', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], cuisine: 'chinese', price: 210, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
-  { id: 'ch-veg-b', name: 'Momos & Soup', description: 'Steam momos with hot & sour soup', vegType: 'veg', mealTimes: ['Breakfast', 'Lunch'], cuisine: 'chinese', price: 120, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: true, quantityLimit: null },
-  { id: 'ch-nv-d', name: 'Kung Pao Chicken', description: 'Spicy chicken with fried rice', vegType: 'non-veg', mealTimes: ['Dinner'], cuisine: 'chinese', price: 230, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: 40 },
+  // Chinese
+  { id: 'ch-friedrice', name: 'Veg Fried Rice', description: 'Classic Chinese fried rice', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'chinese', price: 60, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ch-noodles', name: 'Hakka Noodles', description: 'Stir-fried hakka noodles', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'chinese', price: 65, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ch-manchurian', name: 'Veg Manchurian', description: 'Fried veggie balls in sauce', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'chinese', price: 55, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
+  { id: 'ch-momos', name: 'Steam Momos (6 pcs)', description: 'Steamed dumplings', vegType: 'veg', mealTimes: ['Breakfast', 'Lunch'], mealType: 'individual', cuisine: 'chinese', price: 50, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: true, quantityLimit: null },
+  { id: 'ch-soup', name: 'Hot & Sour Soup', description: 'Classic Chinese soup', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'chinese', price: 40, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
+  { id: 'ch-chilli-chicken', name: 'Chilli Chicken', description: 'Spicy fried chicken', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'chinese', price: 80, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
+  { id: 'ch-spring-roll', name: 'Spring Roll (4 pcs)', description: 'Crispy vegetable rolls', vegType: 'veg', mealTimes: ['Breakfast', 'Lunch'], mealType: 'individual', cuisine: 'chinese', price: 45, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: true, featured: false, quantityLimit: null },
 
-  { id: 'co-veg-l', name: 'Creamy Pasta Meal', description: 'Pasta with garlic bread & side salad', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'continental', price: 200, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
-  { id: 'co-nv-l', name: 'Grilled Chicken Plate', description: 'Grilled chicken with veggies & mash', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], cuisine: 'continental', price: 250, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 35 },
-  { id: 'co-veg-b', name: 'Continental Breakfast', description: 'Toast, eggs, juice & fruit plate', vegType: 'veg', mealTimes: ['Breakfast'], cuisine: 'continental', price: 130, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: false, featured: false, quantityLimit: null },
+  // Continental
+  { id: 'co-pasta', name: 'Creamy Pasta', description: 'White sauce penne pasta', vegType: 'veg', mealTimes: ['Lunch'], mealType: 'individual', cuisine: 'continental', price: 75, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
+  { id: 'co-garlic-bread', name: 'Garlic Bread (4 pcs)', description: 'Toasted garlic bread', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'continental', price: 40, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
+  { id: 'co-side-salad', name: 'Side Salad', description: 'Caesar or garden salad', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'continental', price: 35, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
+  { id: 'co-grilled-chicken', name: 'Grilled Chicken', description: 'Herb grilled chicken breast', vegType: 'non-veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'individual', cuisine: 'continental', price: 100, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 35 },
+  { id: 'co-toast', name: 'Toast & Eggs', description: 'Buttered toast with scrambled eggs', vegType: 'non-veg', mealTimes: ['Breakfast'], mealType: 'individual', cuisine: 'continental', price: 50, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: false, featured: false, quantityLimit: null },
+  { id: 'co-fruit-plate', name: 'Fruit Plate', description: 'Fresh seasonal fruits', vegType: 'veg', mealTimes: ['Breakfast'], mealType: 'individual', cuisine: 'continental', price: 45, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: false, featured: false, quantityLimit: null },
+  { id: 'co-juice', name: 'Fresh Juice', description: 'Orange or mixed fruit juice', vegType: 'veg', mealTimes: ['Breakfast', 'Lunch'], mealType: 'individual', cuisine: 'continental', price: 30, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: false, quantityLimit: null },
 ];
 
-const comboMeals: Meal[] = [
-  { id: 'combo-1', name: 'Indian Feast Combo', description: 'Dal + Paneer + Roti + Rice + Dessert', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'indian', price: 280, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null },
-  { id: 'combo-2', name: 'Dragon Power Combo', description: 'Noodles + Fried Rice + Manchurian + Soup', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'chinese', price: 320, kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null },
-  { id: 'combo-3', name: 'Euro Combo Platter', description: 'Pasta + Salad + Garlic Bread + Dessert', vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], cuisine: 'continental', price: 380, kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 25 },
-  { id: 'combo-4', name: 'Office Power Combo', description: 'Full meal + snack + beverage', vegType: 'veg', mealTimes: ['Lunch'], cuisine: 'custom', price: 240, kitchen: 'Paradise Kitchen', restaurant: 'Meal Box', enabled: false, featured: false, quantityLimit: null },
-  { id: 'combo-5', name: 'Non-Veg Feast Combo', description: 'Chicken + mutton + naan + rice + dessert', vegType: 'non-veg', mealTimes: ['Dinner'], cuisine: 'indian', price: 420, kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: false, featured: false, quantityLimit: 15 },
+// ─── Default Combo Meals ──────────────────────────────────────────────────────
+const defaultComboMeals: Meal[] = [
+  {
+    id: 'combo-1', name: 'Executive Lunch Combo', description: 'Roti x2, Dal, Rice, Paneer Bhaji, Salad, Sweet',
+    vegType: 'veg', mealTimes: ['Lunch'], mealType: 'combo', cuisine: 'indian', price: 180,
+    kitchen: 'Spice Garden', restaurant: 'Desi Flavors', enabled: true, featured: false, quantityLimit: null,
+    comboItems: [
+      { mealId: 'ind-roti', qty: 2 }, { mealId: 'ind-dal', qty: 1 }, { mealId: 'ind-rice', qty: 1 },
+      { mealId: 'ind-paneer', qty: 1 }, { mealId: 'ind-salad', qty: 1 }, { mealId: 'ind-sweet', qty: 1 },
+    ],
+  },
+  {
+    id: 'combo-2', name: 'Dragon Power Combo', description: 'Fried Rice, Noodles, Manchurian, Soup',
+    vegType: 'veg', mealTimes: ['Lunch'], mealType: 'combo', cuisine: 'chinese', price: 220,
+    kitchen: 'Dragon Kitchen', restaurant: 'China Bowl', enabled: false, featured: false, quantityLimit: null,
+    comboItems: [
+      { mealId: 'ch-friedrice', qty: 1 }, { mealId: 'ch-noodles', qty: 1 },
+      { mealId: 'ch-manchurian', qty: 1 }, { mealId: 'ch-soup', qty: 1 },
+    ],
+  },
+  {
+    id: 'combo-3', name: 'Euro Combo Platter', description: 'Pasta, Salad, Garlic Bread, Juice',
+    vegType: 'veg', mealTimes: ['Lunch', 'Dinner'], mealType: 'combo', cuisine: 'continental', price: 180,
+    kitchen: 'Euro Bistro', restaurant: 'The Continental', enabled: true, featured: true, quantityLimit: 25,
+    comboItems: [
+      { mealId: 'co-pasta', qty: 1 }, { mealId: 'co-side-salad', qty: 1 },
+      { mealId: 'co-garlic-bread', qty: 1 }, { mealId: 'co-juice', qty: 1 },
+    ],
+  },
 ];
 
 const cuisineTabs: { key: CuisineKey; label: string; emoji: string }[] = [
@@ -166,9 +209,10 @@ interface MealToggleCardProps {
   onToggle: (id: string) => void;
   onMealTimesChange: (id: string, times: MealTime[]) => void;
   onQuantityLimitChange: (id: string, val: number | null) => void;
+  individualMeals?: Meal[]; // for showing combo items
 }
 
-function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChange }: MealToggleCardProps) {
+function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChange, individualMeals }: MealToggleCardProps) {
   const [editingQty, setEditingQty] = useState(false);
 
   return (
@@ -185,6 +229,9 @@ function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChan
               {meal.featured && (
                 <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Featured</Badge>
               )}
+              {meal.mealType === 'combo' && (
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 font-semibold text-primary border-primary/30">COMBO</Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{meal.description}</p>
           </div>
@@ -200,6 +247,23 @@ function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChan
         <div className="flex items-center gap-1.5 flex-wrap mt-2">
           <VegBadge type={meal.vegType} />
         </div>
+
+        {/* Combo items breakdown */}
+        {meal.mealType === 'combo' && meal.comboItems && individualMeals && (
+          <div className="mt-2 p-2 rounded-lg bg-muted/30 border border-border/50">
+            <p className="text-[10px] text-muted-foreground font-medium mb-1">Includes:</p>
+            <div className="flex flex-wrap gap-1">
+              {meal.comboItems.map(ci => {
+                const item = individualMeals.find(m => m.id === ci.mealId);
+                return (
+                  <span key={ci.mealId} className="text-[10px] bg-card border border-border rounded px-1.5 py-0.5 text-foreground">
+                    {item?.name || ci.mealId} {ci.qty > 1 ? `x${ci.qty}` : ''}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Choosable meal times */}
         <div className="mt-3">
@@ -257,7 +321,7 @@ function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChan
   );
 }
 
-// ─── Custom Meal Modal ────────────────────────────────────────────────────────
+// ─── Create Custom Meal Modal (for Custom cuisine tab) ───────────────────────
 function CreateCustomMealModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (meal: CustomMealEntry) => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -284,7 +348,6 @@ function CreateCustomMealModal({ open, onClose, onSave }: { open: boolean; onClo
       items: items.filter(i => i.name),
       enabled: true,
     });
-    // Reset
     setName(''); setDescription(''); setVegType('veg'); setMealTimes(['Lunch']); setPrice(''); setItems([{ id: '1', name: '', quantity: 1 }]);
     onClose();
   };
@@ -367,6 +430,257 @@ function CreateCustomMealModal({ open, onClose, onSave }: { open: boolean; onClo
   );
 }
 
+// ─── Create Custom Combo Modal ───────────────────────────────────────────────
+function CreateComboModal({
+  open,
+  onClose,
+  onSave,
+  individualMeals,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (combo: Meal) => void;
+  individualMeals: Meal[];
+}) {
+  const [comboName, setComboName] = useState('');
+  const [comboCuisine, setComboCuisine] = useState<CuisineKey>('indian');
+  const [comboMealTime, setComboMealTime] = useState<MealTime[]>(['Lunch']);
+  const [comboVegType, setComboVegType] = useState<VegType>('veg');
+  const [comboPrice, setComboPrice] = useState('');
+  const [comboPriceMode, setComboPriceMode] = useState<'auto' | 'manual'>('auto');
+  const [comboQtyLimit, setComboQtyLimit] = useState('');
+  const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
+
+  const availableItems = individualMeals.filter(m => m.cuisine === comboCuisine);
+
+  const toggleItem = (mealId: string) => {
+    setSelectedItems(prev => {
+      const next = { ...prev };
+      if (next[mealId]) {
+        delete next[mealId];
+      } else {
+        next[mealId] = 1;
+      }
+      return next;
+    });
+  };
+
+  const updateItemQty = (mealId: string, delta: number) => {
+    setSelectedItems(prev => {
+      const current = prev[mealId] || 1;
+      const newQty = Math.max(1, current + delta);
+      return { ...prev, [mealId]: newQty };
+    });
+  };
+
+  const autoTotal = useMemo(() => {
+    return Object.entries(selectedItems).reduce((sum, [id, qty]) => {
+      const item = individualMeals.find(m => m.id === id);
+      return sum + (item?.price || 0) * qty;
+    }, 0);
+  }, [selectedItems, individualMeals]);
+
+  const finalPrice = comboPriceMode === 'auto' ? autoTotal : Number(comboPrice) || 0;
+  const selectedCount = Object.keys(selectedItems).length;
+
+  const handleSave = () => {
+    if (!comboName || selectedCount < 2) return;
+    const hasNonVeg = Object.keys(selectedItems).some(id => individualMeals.find(m => m.id === id)?.vegType === 'non-veg');
+    const comboItems = Object.entries(selectedItems).map(([mealId, qty]) => ({ mealId, qty }));
+    const itemNames = comboItems.map(ci => {
+      const item = individualMeals.find(m => m.id === ci.mealId);
+      return `${item?.name || ci.mealId}${ci.qty > 1 ? ` x${ci.qty}` : ''}`;
+    }).join(', ');
+
+    const newCombo: Meal = {
+      id: `combo-custom-${Date.now()}`,
+      name: comboName,
+      description: itemNames,
+      vegType: hasNonVeg ? 'non-veg' : 'veg',
+      mealTimes: comboMealTime,
+      mealType: 'combo',
+      cuisine: comboCuisine,
+      price: finalPrice,
+      kitchen: 'Custom Kitchen',
+      restaurant: 'Custom',
+      enabled: true,
+      featured: false,
+      quantityLimit: comboQtyLimit ? Number(comboQtyLimit) : null,
+      comboItems,
+    };
+
+    onSave(newCombo);
+    // Reset
+    setComboName(''); setComboCuisine('indian'); setComboMealTime(['Lunch']); setComboVegType('veg');
+    setComboPrice(''); setComboPriceMode('auto'); setComboQtyLimit(''); setSelectedItems({});
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create Custom Combo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* Combo name */}
+          <div className="space-y-2">
+            <Label>Combo Name <span className="text-destructive">*</span></Label>
+            <Input value={comboName} onChange={e => setComboName(e.target.value)} placeholder="e.g. Executive Lunch Combo" />
+          </div>
+
+          {/* Cuisine filter for items */}
+          <div className="space-y-2">
+            <Label>Select Cuisine (to pick items from)</Label>
+            <div className="flex gap-2 flex-wrap">
+              {cuisineTabs.filter(t => t.key !== 'custom').map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => { setComboCuisine(tab.key); setSelectedItems({}); }}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-semibold border transition-all',
+                    comboCuisine === tab.key
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:border-primary/50 bg-card',
+                  )}
+                >
+                  {tab.emoji} {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Item selection */}
+          <div className="space-y-2">
+            <Label>Select Items <span className="text-destructive">*</span> <span className="text-muted-foreground text-xs font-normal">(min 2)</span></Label>
+            <div className="border border-border rounded-xl max-h-60 overflow-y-auto">
+              {availableItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">No individual items found for this cuisine</p>
+              ) : (
+                availableItems.map(item => {
+                  const isSelected = !!selectedItems[item.id];
+                  const qty = selectedItems[item.id] || 0;
+                  return (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 transition-colors',
+                        isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleItem(item.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-foreground">{item.name}</span>
+                          <VegBadge type={item.vegType} />
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">{item.description}</span>
+                      </div>
+                      <span className="text-xs font-semibold text-primary shrink-0">₹{item.price}</span>
+                      {isSelected && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => updateItemQty(item.id, -1)}
+                            className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-sm font-semibold w-6 text-center">{qty}</span>
+                          <button
+                            onClick={() => updateItemQty(item.id, 1)}
+                            className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Meal time */}
+          <div className="space-y-2">
+            <Label>Meal Time</Label>
+            <MealTimeBadges times={comboMealTime} editable onChange={setComboMealTime} />
+          </div>
+
+          {/* Pricing */}
+          <div className="space-y-2">
+            <Label>Combo Price</Label>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => setComboPriceMode('auto')}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                  comboPriceMode === 'auto' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground bg-card',
+                )}
+              >
+                Auto (sum of items)
+              </button>
+              <button
+                onClick={() => setComboPriceMode('manual')}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                  comboPriceMode === 'manual' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground bg-card',
+                )}
+              >
+                Manual price
+              </button>
+            </div>
+            {comboPriceMode === 'auto' ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border">
+                <span className="text-xs text-muted-foreground">Calculated total:</span>
+                <span className="text-sm font-bold text-primary">₹{autoTotal}</span>
+              </div>
+            ) : (
+              <Input type="number" value={comboPrice} onChange={e => setComboPrice(e.target.value)} placeholder="₹0" />
+            )}
+          </div>
+
+          {/* Daily limit */}
+          <div className="space-y-2">
+            <Label>Daily Quantity Limit (optional)</Label>
+            <Input type="number" value={comboQtyLimit} onChange={e => setComboQtyLimit(e.target.value)} placeholder="Leave empty for unlimited" />
+          </div>
+
+          {/* Summary */}
+          {selectedCount > 0 && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <p className="text-xs font-semibold text-foreground">Combo Summary</p>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(selectedItems).map(([id, qty]) => {
+                  const item = individualMeals.find(m => m.id === id);
+                  return (
+                    <Badge key={id} variant="outline" className="text-[10px]">
+                      {item?.name} {qty > 1 ? `x${qty}` : ''}
+                    </Badge>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{selectedCount} items selected</span>
+                <span className="font-bold text-primary">Total: ₹{finalPrice}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!comboName || selectedCount < 2}>
+            Create Combo
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Stats Bar ────────────────────────────────────────────────────────────────
 function StatsBar({ meals }: { meals: Meal[] }) {
   const total = meals.length;
@@ -406,22 +720,24 @@ export default function OrderSettings() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [customDates, setCustomDates] = useState<Date[]>([]);
 
-  // Custom meal modal
+  // Modals
   const [showCustomMealModal, setShowCustomMealModal] = useState(false);
+  const [showComboModal, setShowComboModal] = useState(false);
 
-  const [individualMeals, setIndividualMeals] = useState<Meal[]>(allMeals);
-  const [comboMealsList, setComboMealsList] = useState<Meal[]>(comboMeals);
+  const [individualMeals, setIndividualMeals] = useState<Meal[]>(allIndividualMeals);
+  const [comboMealsList, setComboMealsList] = useState<Meal[]>(defaultComboMeals);
   const [customCreatedMeals, setCustomCreatedMeals] = useState<Meal[]>([]);
 
   const currentMeals = useMemo(() => {
-    const base = mode === 'individual' ? individualMeals : comboMealsList;
-    if (activeCuisine === 'custom') {
-      return [...base.filter(m => m.cuisine === 'custom'), ...customCreatedMeals];
+    if (mode === 'individual') {
+      if (activeCuisine === 'custom') {
+        return [...individualMeals.filter(m => m.cuisine === 'custom'), ...customCreatedMeals];
+      }
+      return individualMeals;
+    } else {
+      return comboMealsList;
     }
-    return base;
   }, [mode, individualMeals, comboMealsList, customCreatedMeals, activeCuisine]);
-
-  const setCurrentMeals = mode === 'individual' ? setIndividualMeals : setComboMealsList;
 
   // Filter visible meals
   const visibleMeals = useMemo(() => {
@@ -437,27 +753,32 @@ export default function OrderSettings() {
   const stats = useMemo(() => currentMeals, [currentMeals]);
 
   const toggleMeal = (id: string) => {
-    // Check if it's a custom created meal
     if (customCreatedMeals.some(m => m.id === id)) {
       setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
+    } else if (mode === 'individual') {
+      setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
     } else {
-      setCurrentMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
+      setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
     }
   };
 
   const changeMealTimes = (id: string, times: MealTime[]) => {
     if (customCreatedMeals.some(m => m.id === id)) {
       setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
+    } else if (mode === 'individual') {
+      setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
     } else {
-      setCurrentMeals(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
+      setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
     }
   };
 
   const setQtyLimit = (id: string, val: number | null) => {
     if (customCreatedMeals.some(m => m.id === id)) {
       setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
+    } else if (mode === 'individual') {
+      setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
     } else {
-      setCurrentMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
+      setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
     }
   };
 
@@ -468,7 +789,9 @@ export default function OrderSettings() {
       continental: { total: 0, enabled: 0 },
       custom: { total: 0, enabled: 0 },
     };
-    const all = [...(mode === 'individual' ? individualMeals : comboMealsList), ...customCreatedMeals];
+    const all = mode === 'individual'
+      ? [...individualMeals, ...customCreatedMeals]
+      : comboMealsList;
     all.forEach(m => {
       counts[m.cuisine].total++;
       if (m.enabled) counts[m.cuisine].enabled++;
@@ -480,7 +803,7 @@ export default function OrderSettings() {
     setSaving(true);
     await new Promise(r => setTimeout(r, 900));
     setSaving(false);
-    const allMealsList = [...(mode === 'individual' ? individualMeals : comboMealsList), ...customCreatedMeals];
+    const allMealsList = [...individualMeals, ...comboMealsList, ...customCreatedMeals];
     const enabledCount = allMealsList.filter(m => m.enabled).length;
     const dateInfo = scheduleMode === 'monthly'
       ? `for ${format(selectedDate, 'MMMM yyyy')}`
@@ -492,13 +815,22 @@ export default function OrderSettings() {
   };
 
   const enableAll = () => {
-    setCurrentMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: true } : m));
+    if (mode === 'individual') {
+      setIndividualMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: true } : m));
+    } else {
+      setComboMealsList(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: true } : m));
+    }
     if (activeCuisine === 'custom') {
       setCustomCreatedMeals(prev => prev.map(m => ({ ...m, enabled: true })));
     }
   };
+
   const disableAll = () => {
-    setCurrentMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: false } : m));
+    if (mode === 'individual') {
+      setIndividualMeals(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: false } : m));
+    } else {
+      setComboMealsList(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: false } : m));
+    }
     if (activeCuisine === 'custom') {
       setCustomCreatedMeals(prev => prev.map(m => ({ ...m, enabled: false })));
     }
@@ -511,6 +843,7 @@ export default function OrderSettings() {
       description: entry.description || entry.items.map(i => `${i.name} x${i.quantity}`).join(', '),
       vegType: entry.vegType,
       mealTimes: entry.mealTimes,
+      mealType: 'individual',
       cuisine: 'custom',
       price: entry.price,
       kitchen: 'Custom Kitchen',
@@ -521,6 +854,11 @@ export default function OrderSettings() {
     };
     setCustomCreatedMeals(prev => [...prev, newMeal]);
     toast({ title: 'Custom meal created!', description: `${entry.name} has been added.` });
+  };
+
+  const handleAddCombo = (combo: Meal) => {
+    setComboMealsList(prev => [...prev, combo]);
+    toast({ title: '🎁 Combo created!', description: `${combo.name} has been added to combos.` });
   };
 
   const toggleCustomDate = (date: Date) => {
@@ -555,7 +893,6 @@ export default function OrderSettings() {
 
       {/* ── Schedule Section ──────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        {/* Schedule mode toggle */}
         <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
           {(['monthly', 'custom'] as ScheduleMode[]).map(sm => (
             <button
@@ -571,7 +908,6 @@ export default function OrderSettings() {
           ))}
         </div>
 
-        {/* Calendar picker */}
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2 text-xs">
@@ -622,9 +958,12 @@ export default function OrderSettings() {
       <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
         <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
         <p className="text-xs text-info/90 leading-relaxed">
-          <strong>How it works:</strong> Toggle meals ON to make them visible to employees. Choose which meal times (Breakfast/Lunch/Dinner) each meal is available for.
-          {scheduleMode === 'monthly' ? ' Settings apply for the entire selected month.' : ' Settings apply only to the selected custom dates.'}
-          {' '}Changes take effect after saving.
+          <strong>How it works:</strong> Toggle meals ON to make them visible to employees.
+          {mode === 'individual'
+            ? ' Individual meals are standalone items employees can order one at a time.'
+            : ' Combo meals bundle multiple items together. Use "Create Custom Combo" to build new combos from individual items.'
+          }
+          {' '}Employees can place only ONE order per meal time (Breakfast/Lunch/Dinner) — either an individual meal or a combo, not both.
         </p>
       </div>
 
@@ -724,7 +1063,12 @@ export default function OrderSettings() {
               <span className="text-muted-foreground">{visibleMeals.filter(m => !m.enabled).length} disabled</span>
             </p>
             <div className="flex items-center gap-2">
-              {activeCuisine === 'custom' && (
+              {mode === 'combo' && (
+                <Button size="sm" className="h-7 text-xs" onClick={() => setShowComboModal(true)}>
+                  <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
+                </Button>
+              )}
+              {activeCuisine === 'custom' && mode === 'individual' && (
                 <Button size="sm" className="h-7 text-xs" onClick={() => setShowCustomMealModal(true)}>
                   <Plus className="h-3 w-3 mr-1" /> Create Custom Meal
                 </Button>
@@ -744,6 +1088,7 @@ export default function OrderSettings() {
                   onToggle={toggleMeal}
                   onMealTimesChange={changeMealTimes}
                   onQuantityLimitChange={setQtyLimit}
+                  individualMeals={individualMeals}
                 />
               ))}
             </div>
@@ -752,7 +1097,12 @@ export default function OrderSettings() {
               <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30 mb-3" />
               <p className="text-sm font-medium text-muted-foreground">No meals match filters</p>
               <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
-              {activeCuisine === 'custom' && (
+              {mode === 'combo' && (
+                <Button size="sm" className="mt-4" onClick={() => setShowComboModal(true)}>
+                  <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
+                </Button>
+              )}
+              {activeCuisine === 'custom' && mode === 'individual' && (
                 <Button size="sm" className="mt-4" onClick={() => setShowCustomMealModal(true)}>
                   <Plus className="h-3 w-3 mr-1" /> Create Custom Meal
                 </Button>
@@ -814,6 +1164,19 @@ export default function OrderSettings() {
             </div>
           </div>
 
+          {/* Business Rule Reminder */}
+          <div className="rounded-xl border border-warning/30 bg-warning/5 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-warning/10 border-b border-warning/20 flex items-center gap-2">
+              <Info className="w-4 h-4 text-warning" />
+              <span className="text-sm font-semibold text-foreground">Order Rule</span>
+            </div>
+            <div className="p-4">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Employees can place <strong className="text-foreground">only 1 order</strong> per meal time (B/L/D) — either an individual meal OR a combo, not both.
+              </p>
+            </div>
+          </div>
+
           {/* Quick Guide */}
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
@@ -824,9 +1187,10 @@ export default function OrderSettings() {
               {[
                 { icon: '🟢', text: 'Green = meal visible to employees' },
                 { icon: '⚫', text: 'Grey = meal hidden from app' },
+                { icon: '🍽', text: 'Individual = single standalone items' },
+                { icon: '🎁', text: 'Combo = bundled meal packages' },
                 { icon: '🕐', text: 'Click meal time pills to choose B/L/D' },
                 { icon: '📅', text: 'Use Monthly or Custom date scheduling' },
-                { icon: '🍱', text: 'Custom tab lets you create your own meals' },
                 { icon: '💾', text: 'Click "Save Changes" to apply' },
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -848,6 +1212,14 @@ export default function OrderSettings() {
         open={showCustomMealModal}
         onClose={() => setShowCustomMealModal(false)}
         onSave={handleAddCustomMeal}
+      />
+
+      {/* Combo Builder Modal */}
+      <CreateComboModal
+        open={showComboModal}
+        onClose={() => setShowComboModal(false)}
+        onSave={handleAddCombo}
+        individualMeals={individualMeals}
       />
     </div>
   );
