@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2, Minus } from 'lucide-react';
-import { format, isSameDay } from 'date-fns';
+import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2, Minus, Pencil, Calendar as CalendarIconLucide } from 'lucide-react';
+import { format, isSameDay, startOfWeek, addDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -13,16 +13,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type MealTime = 'Breakfast' | 'Lunch' | 'Dinner';
 type VegType = 'veg' | 'non-veg';
-type CuisineKey = 'indian' | 'chinese' | 'continental' | 'custom';
+type CuisineKey = 'indian' | 'chinese' | 'continental';
 type ModeKey = 'individual' | 'combo';
-type ScheduleMode = 'monthly' | 'custom';
+type ScheduleMode = 'monthly' | 'custom' | 'weekly';
 type MealType = 'individual' | 'combo';
+type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 
 interface Meal {
   id: string;
@@ -39,23 +42,6 @@ interface Meal {
   featured: boolean;
   quantityLimit: number | null;
   comboItems?: { mealId: string; qty: number }[];
-}
-
-interface CustomMealItem {
-  id: string;
-  name: string;
-  quantity: number;
-}
-
-interface CustomMealEntry {
-  id: string;
-  name: string;
-  description: string;
-  vegType: VegType;
-  mealTimes: MealTime[];
-  price: number;
-  items: CustomMealItem[];
-  enabled: boolean;
 }
 
 // ─── Standalone Individual Meal Data ──────────────────────────────────────────
@@ -128,10 +114,10 @@ const cuisineTabs: { key: CuisineKey; label: string; emoji: string }[] = [
   { key: 'indian', label: 'Indian', emoji: '🍛' },
   { key: 'chinese', label: 'Chinese', emoji: '🥡' },
   { key: 'continental', label: 'Continental', emoji: '🍝' },
-  { key: 'custom', label: 'Custom', emoji: '🍱' },
 ];
 
 const allMealTimes: MealTime[] = ['Breakfast', 'Lunch', 'Dinner'];
+const allDays: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const mealTimeFilters: { key: MealTime | 'all'; label: string }[] = [
   { key: 'all', label: 'All Times' },
@@ -139,6 +125,17 @@ const mealTimeFilters: { key: MealTime | 'all'; label: string }[] = [
   { key: 'Lunch', label: 'Lunch' },
   { key: 'Dinner', label: 'Dinner' },
 ];
+
+// Mock day-wise meal schedule
+const defaultDayWiseMeals: Record<DayOfWeek, string[]> = {
+  Monday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'ind-salad', 'ind-sweet', 'combo-1'],
+  Tuesday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-chicken', 'ind-salad', 'ch-friedrice', 'ch-noodles', 'combo-2'],
+  Wednesday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'co-pasta', 'co-garlic-bread', 'combo-3'],
+  Thursday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-mutton', 'ch-manchurian', 'ch-momos', 'combo-1'],
+  Friday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'ind-sweet', 'co-grilled-chicken', 'combo-3'],
+  Saturday: ['ind-idli', 'ind-paratha', 'ind-egg', 'ch-momos', 'ch-spring-roll'],
+  Sunday: ['ind-idli', 'ind-paratha', 'co-toast', 'co-fruit-plate', 'co-juice'],
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function VegBadge({ type }: { type: VegType }) {
@@ -209,10 +206,11 @@ interface MealToggleCardProps {
   onToggle: (id: string) => void;
   onMealTimesChange: (id: string, times: MealTime[]) => void;
   onQuantityLimitChange: (id: string, val: number | null) => void;
-  individualMeals?: Meal[]; // for showing combo items
+  individualMeals?: Meal[];
+  onEdit?: (meal: Meal) => void;
 }
 
-function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChange, individualMeals }: MealToggleCardProps) {
+function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChange, individualMeals, onEdit }: MealToggleCardProps) {
   const [editingQty, setEditingQty] = useState(false);
 
   return (
@@ -246,6 +244,14 @@ function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChan
         {/* Tags row */}
         <div className="flex items-center gap-1.5 flex-wrap mt-2">
           <VegBadge type={meal.vegType} />
+          {onEdit && meal.mealType === 'combo' && (
+            <button
+              onClick={() => onEdit(meal)}
+              className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/30 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              <Pencil className="w-2.5 h-2.5" /> Edit
+            </button>
+          )}
         </div>
 
         {/* Combo items breakdown */}
@@ -321,137 +327,45 @@ function MealToggleCard({ meal, onToggle, onMealTimesChange, onQuantityLimitChan
   );
 }
 
-// ─── Create Custom Meal Modal (for Custom cuisine tab) ───────────────────────
-function CreateCustomMealModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (meal: CustomMealEntry) => void }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [vegType, setVegType] = useState<VegType>('veg');
-  const [mealTimes, setMealTimes] = useState<MealTime[]>(['Lunch']);
-  const [price, setPrice] = useState('');
-  const [items, setItems] = useState<CustomMealItem[]>([{ id: '1', name: '', quantity: 1 }]);
-
-  const addItem = () => setItems(prev => [...prev, { id: String(Date.now()), name: '', quantity: 1 }]);
-  const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
-  const updateItem = (id: string, field: 'name' | 'quantity', val: string | number) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: val } : i));
-  };
-
-  const handleSave = () => {
-    if (!name || !price || items.some(i => !i.name)) return;
-    onSave({
-      id: `custom-${Date.now()}`,
-      name,
-      description,
-      vegType,
-      mealTimes,
-      price: Number(price),
-      items: items.filter(i => i.name),
-      enabled: true,
-    });
-    setName(''); setDescription(''); setVegType('veg'); setMealTimes(['Lunch']); setPrice(''); setItems([{ id: '1', name: '', quantity: 1 }]);
-    onClose();
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Create Custom Meal</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Meal Name <span className="text-destructive">*</span></Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Special Friday Thali" />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the meal..." rows={2} />
-          </div>
-          <div className="space-y-2">
-            <Label>Veg / Non-Veg</Label>
-            <div className="flex gap-2">
-              <Button type="button" variant={vegType === 'veg' ? 'default' : 'outline'} size="sm"
-                onClick={() => setVegType('veg')}
-                className={vegType === 'veg' ? 'bg-success hover:bg-success/90' : ''}>
-                🟢 Veg
-              </Button>
-              <Button type="button" variant={vegType === 'non-veg' ? 'default' : 'outline'} size="sm"
-                onClick={() => setVegType('non-veg')}
-                className={vegType === 'non-veg' ? 'bg-destructive hover:bg-destructive/90' : ''}>
-                🔴 Non-Veg
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Available For</Label>
-            <MealTimeBadges times={mealTimes} editable onChange={setMealTimes} />
-          </div>
-          <div className="space-y-2">
-            <Label>Price (₹) <span className="text-destructive">*</span></Label>
-            <Input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="₹0" />
-          </div>
-          <div className="space-y-2">
-            <Label>Meal Items <span className="text-destructive">*</span></Label>
-            <div className="space-y-2">
-              {items.map((item, idx) => (
-                <div key={item.id} className="flex items-center gap-2">
-                  <Input
-                    placeholder={`Item ${idx + 1} name`}
-                    value={item.name}
-                    onChange={e => updateItem(item.id, 'name', e.target.value)}
-                    className="flex-1"
-                  />
-                  <Input
-                    type="number" min={1}
-                    value={item.quantity}
-                    onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))}
-                    className="w-20"
-                    placeholder="Qty"
-                  />
-                  {items.length > 1 && (
-                    <Button variant="ghost" size="sm" onClick={() => removeItem(item.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button variant="outline" size="sm" onClick={addItem}>
-                <Plus className="h-3 w-3 mr-1" /> Add Item
-              </Button>
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!name || !price}>Create Meal</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Create Custom Combo Modal ───────────────────────────────────────────────
+// ─── Create/Edit Combo Modal ─────────────────────────────────────────────────
 function CreateComboModal({
   open,
   onClose,
   onSave,
   individualMeals,
+  editingCombo,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (combo: Meal) => void;
   individualMeals: Meal[];
+  editingCombo?: Meal | null;
 }) {
   const [comboName, setComboName] = useState('');
   const [comboCuisine, setComboCuisine] = useState<CuisineKey>('indian');
   const [comboMealTime, setComboMealTime] = useState<MealTime[]>(['Lunch']);
-  const [comboVegType, setComboVegType] = useState<VegType>('veg');
   const [comboPrice, setComboPrice] = useState('');
   const [comboPriceMode, setComboPriceMode] = useState<'auto' | 'manual'>('auto');
   const [comboQtyLimit, setComboQtyLimit] = useState('');
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
 
-  const availableItems = individualMeals.filter(m => m.cuisine === comboCuisine);
+  // Populate when editing
+  useState(() => {
+    if (editingCombo) {
+      setComboName(editingCombo.name);
+      setComboCuisine(editingCombo.cuisine);
+      setComboMealTime(editingCombo.mealTimes);
+      setComboPrice(String(editingCombo.price));
+      setComboQtyLimit(editingCombo.quantityLimit ? String(editingCombo.quantityLimit) : '');
+      const items: Record<string, number> = {};
+      editingCombo.comboItems?.forEach(ci => { items[ci.mealId] = ci.qty; });
+      setSelectedItems(items);
+      setComboPriceMode('manual');
+    }
+  });
+
+  const vegItems = individualMeals.filter(m => m.cuisine === comboCuisine && m.vegType === 'veg');
+  const nonVegItems = individualMeals.filter(m => m.cuisine === comboCuisine && m.vegType === 'non-veg');
 
   const toggleItem = (mealId: string) => {
     setSelectedItems(prev => {
@@ -493,7 +407,7 @@ function CreateComboModal({
     }).join(', ');
 
     const newCombo: Meal = {
-      id: `combo-custom-${Date.now()}`,
+      id: editingCombo?.id || `combo-custom-${Date.now()}`,
       name: comboName,
       description: itemNames,
       vegType: hasNonVeg ? 'non-veg' : 'veg',
@@ -501,39 +415,85 @@ function CreateComboModal({
       mealType: 'combo',
       cuisine: comboCuisine,
       price: finalPrice,
-      kitchen: 'Custom Kitchen',
-      restaurant: 'Custom',
-      enabled: true,
-      featured: false,
+      kitchen: editingCombo?.kitchen || 'Custom Kitchen',
+      restaurant: editingCombo?.restaurant || 'Custom',
+      enabled: editingCombo?.enabled ?? true,
+      featured: editingCombo?.featured ?? false,
       quantityLimit: comboQtyLimit ? Number(comboQtyLimit) : null,
       comboItems,
     };
 
     onSave(newCombo);
-    // Reset
-    setComboName(''); setComboCuisine('indian'); setComboMealTime(['Lunch']); setComboVegType('veg');
+    setComboName(''); setComboCuisine('indian'); setComboMealTime(['Lunch']);
     setComboPrice(''); setComboPriceMode('auto'); setComboQtyLimit(''); setSelectedItems({});
     onClose();
+  };
+
+  const renderItemList = (items: Meal[], sectionLabel: string) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="space-y-1">
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2 pt-2">{sectionLabel}</p>
+        {items.map(item => {
+          const isSelected = !!selectedItems[item.id];
+          const qty = selectedItems[item.id] || 0;
+          return (
+            <div
+              key={item.id}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 transition-colors',
+                isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
+              )}
+            >
+              <Checkbox checked={isSelected} onCheckedChange={() => toggleItem(item.id)} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-foreground">{item.name}</span>
+                  <VegBadge type={item.vegType} />
+                </div>
+                <span className="text-[11px] text-muted-foreground">{item.description}</span>
+              </div>
+              <span className="text-xs font-semibold text-primary shrink-0">₹{item.price}</span>
+              {isSelected && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => updateItemQty(item.id, -1)}
+                    className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="text-sm font-semibold w-6 text-center">{qty}</span>
+                  <button
+                    onClick={() => updateItemQty(item.id, 1)}
+                    className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Custom Combo</DialogTitle>
+          <DialogTitle>{editingCombo ? 'Edit Combo Meal' : 'Create Custom Combo'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          {/* Combo name */}
           <div className="space-y-2">
             <Label>Combo Name <span className="text-destructive">*</span></Label>
             <Input value={comboName} onChange={e => setComboName(e.target.value)} placeholder="e.g. Executive Lunch Combo" />
           </div>
 
-          {/* Cuisine filter for items */}
           <div className="space-y-2">
             <Label>Select Cuisine (to pick items from)</Label>
             <div className="flex gap-2 flex-wrap">
-              {cuisineTabs.filter(t => t.key !== 'custom').map(tab => (
+              {cuisineTabs.map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => { setComboCuisine(tab.key); setSelectedItems({}); }}
@@ -550,67 +510,25 @@ function CreateComboModal({
             </div>
           </div>
 
-          {/* Item selection */}
           <div className="space-y-2">
             <Label>Select Items <span className="text-destructive">*</span> <span className="text-muted-foreground text-xs font-normal">(min 2)</span></Label>
             <div className="border border-border rounded-xl max-h-60 overflow-y-auto">
-              {availableItems.length === 0 ? (
+              {vegItems.length === 0 && nonVegItems.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6">No individual items found for this cuisine</p>
               ) : (
-                availableItems.map(item => {
-                  const isSelected = !!selectedItems[item.id];
-                  const qty = selectedItems[item.id] || 0;
-                  return (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        'flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 transition-colors',
-                        isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
-                      )}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleItem(item.id)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium text-foreground">{item.name}</span>
-                          <VegBadge type={item.vegType} />
-                        </div>
-                        <span className="text-[11px] text-muted-foreground">{item.description}</span>
-                      </div>
-                      <span className="text-xs font-semibold text-primary shrink-0">₹{item.price}</span>
-                      {isSelected && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={() => updateItemQty(item.id, -1)}
-                            className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-sm font-semibold w-6 text-center">{qty}</span>
-                          <button
-                            onClick={() => updateItemQty(item.id, 1)}
-                            className="w-6 h-6 rounded-md border border-border flex items-center justify-center hover:bg-muted transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+                <>
+                  {renderItemList(vegItems, '🟢 Veg Items')}
+                  {renderItemList(nonVegItems, '🔴 Non-Veg Items')}
+                </>
               )}
             </div>
           </div>
 
-          {/* Meal time */}
           <div className="space-y-2">
             <Label>Meal Time</Label>
             <MealTimeBadges times={comboMealTime} editable onChange={setComboMealTime} />
           </div>
 
-          {/* Pricing */}
           <div className="space-y-2">
             <Label>Combo Price</Label>
             <div className="flex items-center gap-2 mb-2">
@@ -643,13 +561,11 @@ function CreateComboModal({
             )}
           </div>
 
-          {/* Daily limit */}
           <div className="space-y-2">
             <Label>Daily Quantity Limit (optional)</Label>
             <Input type="number" value={comboQtyLimit} onChange={e => setComboQtyLimit(e.target.value)} placeholder="Leave empty for unlimited" />
           </div>
 
-          {/* Summary */}
           {selectedCount > 0 && (
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
               <p className="text-xs font-semibold text-foreground">Combo Summary</p>
@@ -673,7 +589,7 @@ function CreateComboModal({
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave} disabled={!comboName || selectedCount < 2}>
-            Create Combo
+            {editingCombo ? 'Save Changes' : 'Create Combo'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -692,15 +608,76 @@ function StatsBar({ meals }: { meals: Meal[] }) {
     <div className="grid grid-cols-4 gap-3">
       {[
         { label: 'Total Meals', value: total, color: 'text-foreground' },
-        { label: 'Available to Employees', value: enabled, color: 'text-success' },
-        { label: 'Hidden from Employees', value: disabled, color: 'text-destructive' },
-        { label: 'Veg Options', value: veg, color: 'text-success' },
+        { label: 'Enabled', value: enabled, color: 'text-success' },
+        { label: 'Disabled', value: disabled, color: 'text-destructive' },
+        { label: 'Veg Items', value: veg, color: 'text-success' },
       ].map(s => (
-        <div key={s.label} className="bg-card border border-border rounded-xl px-4 py-3">
+        <div key={s.label} className="rounded-xl border border-border bg-card p-3 text-center shadow-sm">
           <p className={cn('text-2xl font-bold', s.color)}>{s.value}</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Day-Wise Meals View ──────────────────────────────────────────────────────
+function DayWiseMealsView({ individualMeals, comboMeals }: { individualMeals: Meal[]; comboMeals: Meal[] }) {
+  const allMealItems = [...individualMeals, ...comboMeals];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
+        <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
+        <p className="text-xs text-info/90 leading-relaxed">
+          <strong>Day-wise Meal Schedule:</strong> This shows meals set by super admin for each day of the week for your company. Working days are based on company configuration.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {allDays.map(day => {
+          const mealIds = defaultDayWiseMeals[day] || [];
+          const meals = mealIds.map(id => allMealItems.find(m => m.id === id)).filter(Boolean) as Meal[];
+          const isWeekend = day === 'Saturday' || day === 'Sunday';
+          return (
+            <Card key={day} className={cn(isWeekend && 'opacity-70')}>
+              <CardHeader className="py-3 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    {day}
+                    {isWeekend && <Badge variant="secondary" className="text-[9px]">Weekend</Badge>}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-[10px]">{meals.length} meals</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 pt-0">
+                {meals.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No meals scheduled</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {meals.map(meal => (
+                      <span
+                        key={meal.id}
+                        className={cn(
+                          'inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-lg border',
+                          meal.mealType === 'combo'
+                            ? 'bg-primary/5 border-primary/20 text-primary'
+                            : meal.vegType === 'veg'
+                              ? 'bg-success/5 border-success/20 text-success'
+                              : 'bg-destructive/5 border-destructive/20 text-destructive',
+                        )}
+                      >
+                        <span className={cn('w-1.5 h-1.5 rounded-full', meal.vegType === 'veg' ? 'bg-success' : 'bg-destructive')} />
+                        {meal.name}
+                        {meal.mealType === 'combo' && ' 🎁'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -714,6 +691,7 @@ export default function OrderSettings() {
   const [search, setSearch] = useState('');
   const [vegFilter, setVegFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
   const [saving, setSaving] = useState(false);
+  const [activeView, setActiveView] = useState<'meals' | 'daywise'>('meals');
 
   // Calendar & schedule
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('monthly');
@@ -721,23 +699,19 @@ export default function OrderSettings() {
   const [customDates, setCustomDates] = useState<Date[]>([]);
 
   // Modals
-  const [showCustomMealModal, setShowCustomMealModal] = useState(false);
   const [showComboModal, setShowComboModal] = useState(false);
+  const [editingCombo, setEditingCombo] = useState<Meal | null>(null);
 
   const [individualMeals, setIndividualMeals] = useState<Meal[]>(allIndividualMeals);
   const [comboMealsList, setComboMealsList] = useState<Meal[]>(defaultComboMeals);
-  const [customCreatedMeals, setCustomCreatedMeals] = useState<Meal[]>([]);
 
   const currentMeals = useMemo(() => {
     if (mode === 'individual') {
-      if (activeCuisine === 'custom') {
-        return [...individualMeals.filter(m => m.cuisine === 'custom'), ...customCreatedMeals];
-      }
       return individualMeals;
     } else {
       return comboMealsList;
     }
-  }, [mode, individualMeals, comboMealsList, customCreatedMeals, activeCuisine]);
+  }, [mode, individualMeals, comboMealsList]);
 
   // Filter visible meals
   const visibleMeals = useMemo(() => {
@@ -753,9 +727,7 @@ export default function OrderSettings() {
   const stats = useMemo(() => currentMeals, [currentMeals]);
 
   const toggleMeal = (id: string) => {
-    if (customCreatedMeals.some(m => m.id === id)) {
-      setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
-    } else if (mode === 'individual') {
+    if (mode === 'individual') {
       setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
     } else {
       setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
@@ -763,9 +735,7 @@ export default function OrderSettings() {
   };
 
   const changeMealTimes = (id: string, times: MealTime[]) => {
-    if (customCreatedMeals.some(m => m.id === id)) {
-      setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
-    } else if (mode === 'individual') {
+    if (mode === 'individual') {
       setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
     } else {
       setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, mealTimes: times } : m));
@@ -773,9 +743,7 @@ export default function OrderSettings() {
   };
 
   const setQtyLimit = (id: string, val: number | null) => {
-    if (customCreatedMeals.some(m => m.id === id)) {
-      setCustomCreatedMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
-    } else if (mode === 'individual') {
+    if (mode === 'individual') {
       setIndividualMeals(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
     } else {
       setComboMealsList(prev => prev.map(m => m.id === id ? { ...m, quantityLimit: val } : m));
@@ -787,27 +755,28 @@ export default function OrderSettings() {
       indian: { total: 0, enabled: 0 },
       chinese: { total: 0, enabled: 0 },
       continental: { total: 0, enabled: 0 },
-      custom: { total: 0, enabled: 0 },
     };
-    const all = mode === 'individual'
-      ? [...individualMeals, ...customCreatedMeals]
-      : comboMealsList;
+    const all = mode === 'individual' ? individualMeals : comboMealsList;
     all.forEach(m => {
-      counts[m.cuisine].total++;
-      if (m.enabled) counts[m.cuisine].enabled++;
+      if (counts[m.cuisine]) {
+        counts[m.cuisine].total++;
+        if (m.enabled) counts[m.cuisine].enabled++;
+      }
     });
     return counts;
-  }, [mode, individualMeals, comboMealsList, customCreatedMeals]);
+  }, [mode, individualMeals, comboMealsList]);
 
   const handleSave = async () => {
     setSaving(true);
     await new Promise(r => setTimeout(r, 900));
     setSaving(false);
-    const allMealsList = [...individualMeals, ...comboMealsList, ...customCreatedMeals];
+    const allMealsList = [...individualMeals, ...comboMealsList];
     const enabledCount = allMealsList.filter(m => m.enabled).length;
     const dateInfo = scheduleMode === 'monthly'
       ? `for ${format(selectedDate, 'MMMM yyyy')}`
-      : `for ${customDates.length} selected date(s)`;
+      : scheduleMode === 'weekly'
+        ? 'for selected week'
+        : `for ${customDates.length} selected date(s)`;
     toast({
       title: '✅ Availability Saved',
       description: `${enabledCount} meal(s) are now visible to employees ${dateInfo}.`,
@@ -820,9 +789,6 @@ export default function OrderSettings() {
     } else {
       setComboMealsList(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: true } : m));
     }
-    if (activeCuisine === 'custom') {
-      setCustomCreatedMeals(prev => prev.map(m => ({ ...m, enabled: true })));
-    }
   };
 
   const disableAll = () => {
@@ -831,34 +797,28 @@ export default function OrderSettings() {
     } else {
       setComboMealsList(prev => prev.map(m => m.cuisine === activeCuisine ? { ...m, enabled: false } : m));
     }
-    if (activeCuisine === 'custom') {
-      setCustomCreatedMeals(prev => prev.map(m => ({ ...m, enabled: false })));
-    }
   };
 
-  const handleAddCustomMeal = (entry: CustomMealEntry) => {
-    const newMeal: Meal = {
-      id: entry.id,
-      name: entry.name,
-      description: entry.description || entry.items.map(i => `${i.name} x${i.quantity}`).join(', '),
-      vegType: entry.vegType,
-      mealTimes: entry.mealTimes,
-      mealType: 'individual',
-      cuisine: 'custom',
-      price: entry.price,
-      kitchen: 'Custom Kitchen',
-      restaurant: 'Custom',
-      enabled: true,
-      featured: false,
-      quantityLimit: null,
-    };
-    setCustomCreatedMeals(prev => [...prev, newMeal]);
-    toast({ title: 'Custom meal created!', description: `${entry.name} has been added.` });
+  const handleAddOrUpdateCombo = (combo: Meal) => {
+    setComboMealsList(prev => {
+      const existing = prev.findIndex(m => m.id === combo.id);
+      if (existing >= 0) {
+        const updated = [...prev];
+        updated[existing] = combo;
+        return updated;
+      }
+      return [...prev, combo];
+    });
+    toast({
+      title: editingCombo ? '✏️ Combo updated!' : '🎁 Combo created!',
+      description: `${combo.name} has been ${editingCombo ? 'updated' : 'added to combos'}.`,
+    });
+    setEditingCombo(null);
   };
 
-  const handleAddCombo = (combo: Meal) => {
-    setComboMealsList(prev => [...prev, combo]);
-    toast({ title: '🎁 Combo created!', description: `${combo.name} has been added to combos.` });
+  const handleEditCombo = (meal: Meal) => {
+    setEditingCombo(meal);
+    setShowComboModal(true);
   };
 
   const toggleCustomDate = (date: Date) => {
@@ -891,335 +851,370 @@ export default function OrderSettings() {
         </div>
       </div>
 
-      {/* ── Schedule Section ──────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
-          {(['monthly', 'custom'] as ScheduleMode[]).map(sm => (
-            <button
-              key={sm}
-              onClick={() => setScheduleMode(sm)}
-              className={cn(
-                'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize',
-                scheduleMode === sm ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {sm === 'monthly' ? '📅 Monthly Default' : '🎯 Custom Dates'}
-            </button>
-          ))}
-        </div>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2 text-xs">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {scheduleMode === 'monthly'
-                ? format(selectedDate, 'MMMM yyyy')
-                : customDates.length > 0
-                  ? `${customDates.length} date(s) selected`
-                  : 'Select dates'
-              }
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            {scheduleMode === 'monthly' ? (
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={d => d && setSelectedDate(d)}
-                className={cn("p-3 pointer-events-auto")}
-              />
-            ) : (
-              <Calendar
-                mode="multiple"
-                selected={customDates}
-                onSelect={(dates) => dates && setCustomDates(dates)}
-                className={cn("p-3 pointer-events-auto")}
-              />
-            )}
-          </PopoverContent>
-        </Popover>
-
-        {scheduleMode === 'custom' && customDates.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap">
-            {customDates.slice(0, 5).map(d => (
-              <Badge key={d.toISOString()} variant="outline" className="text-[10px] gap-1">
-                {format(d, 'dd MMM')}
-                <button onClick={() => toggleCustomDate(d)} className="hover:text-destructive">×</button>
-              </Badge>
-            ))}
-            {customDates.length > 5 && (
-              <Badge variant="secondary" className="text-[10px]">+{customDates.length - 5} more</Badge>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Info Banner ───────────────────────────────────────────────── */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
-        <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
-        <p className="text-xs text-info/90 leading-relaxed">
-          <strong>How it works:</strong> Toggle meals ON to make them visible to employees.
-          {mode === 'individual'
-            ? ' Individual meals are standalone items employees can order one at a time.'
-            : ' Combo meals bundle multiple items together. Use "Create Custom Combo" to build new combos from individual items.'
-          }
-          {' '}Employees can place only ONE order per meal time (Breakfast/Lunch/Dinner) — either an individual meal or a combo, not both.
-        </p>
-      </div>
-
-      <StatsBar meals={stats} />
-
-      {/* ── Mode Segmented Control ────────────────────────────────────── */}
+      {/* ── View Toggle: Meals vs Day-wise ─────────────────────────────── */}
       <div className="flex items-center gap-1 p-1 bg-muted rounded-xl w-fit">
-        {(['individual', 'combo'] as ModeKey[]).map(m => (
+        {([
+          { key: 'meals' as const, label: '🍽 Meal Settings', },
+          { key: 'daywise' as const, label: '📅 Day-wise Schedule', },
+        ]).map(v => (
           <button
-            key={m}
-            onClick={() => { setMode(m); setActiveCuisine('indian'); setActiveMealTime('all'); setSearch(''); }}
+            key={v.key}
+            onClick={() => setActiveView(v.key)}
             className={cn(
-              'px-5 py-2 rounded-lg text-xs font-semibold transition-all capitalize',
-              mode === m ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
+              'px-5 py-2 rounded-lg text-xs font-semibold transition-all',
+              activeView === v.key ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            {m === 'individual' ? '🍽 Individual Meals' : '🎁 Combo Meals'}
+            {v.label}
           </button>
         ))}
       </div>
 
-      {/* ── 2-column layout ───────────────────────────────────────────── */}
-      <div className="flex gap-5 items-start">
-
-        {/* LEFT: Meal Configuration */}
-        <div className="flex-1 min-w-0 space-y-4">
-
-          {/* Cuisine pill tabs */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {cuisineTabs.map(tab => {
-              const count = cuisineCounts[tab.key];
-              return (
+      {activeView === 'daywise' ? (
+        <DayWiseMealsView individualMeals={individualMeals} comboMeals={comboMealsList} />
+      ) : (
+        <>
+          {/* ── Schedule Section ──────────────────────────────────────────── */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
+              {(['monthly', 'weekly', 'custom'] as ScheduleMode[]).map(sm => (
                 <button
-                  key={tab.key}
-                  onClick={() => setActiveCuisine(tab.key)}
+                  key={sm}
+                  onClick={() => setScheduleMode(sm)}
                   className={cn(
-                    'flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all',
-                    activeCuisine === tab.key
-                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                      : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground bg-card',
+                    'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize',
+                    scheduleMode === sm ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <span>{tab.emoji}</span>
-                  {tab.label}
-                  <span className={cn(
-                    'text-[9px] font-bold px-1.5 py-0.5 rounded-full',
-                    activeCuisine === tab.key
-                      ? 'bg-primary-foreground/20 text-primary-foreground'
-                      : 'bg-success/10 text-success',
-                  )}>
-                    {count.enabled}/{count.total}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Filters row */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Search meals..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9 text-xs" />
-            </div>
-
-            <div className="flex items-center gap-1 p-0.5 bg-muted rounded-lg">
-              {mealTimeFilters.map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => setActiveMealTime(f.key)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-                    activeMealTime === f.key ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {f.label}
+                  {sm === 'monthly' ? '📅 Monthly Default' : sm === 'weekly' ? '📆 Weekly' : '🎯 Custom Dates'}
                 </button>
               ))}
             </div>
 
-            <Select value={vegFilter} onValueChange={v => setVegFilter(v as typeof vegFilter)}>
-              <SelectTrigger className="h-9 w-36 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">All Types</SelectItem>
-                <SelectItem value="veg" className="text-xs">🟢 Veg Only</SelectItem>
-                <SelectItem value="non-veg" className="text-xs">🔴 Non-Veg Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Bulk actions */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground font-medium">
-              {visibleMeals.length} meal{visibleMeals.length !== 1 ? 's' : ''} shown
-              {' · '}
-              <span className="text-success">{visibleMeals.filter(m => m.enabled).length} enabled</span>
-              {' · '}
-              <span className="text-muted-foreground">{visibleMeals.filter(m => !m.enabled).length} disabled</span>
-            </p>
-            <div className="flex items-center gap-2">
-              {mode === 'combo' && (
-                <Button size="sm" className="h-7 text-xs" onClick={() => setShowComboModal(true)}>
-                  <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
-                </Button>
-              )}
-              {activeCuisine === 'custom' && mode === 'individual' && (
-                <Button size="sm" className="h-7 text-xs" onClick={() => setShowCustomMealModal(true)}>
-                  <Plus className="h-3 w-3 mr-1" /> Create Custom Meal
-                </Button>
-              )}
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={enableAll}>Enable All</Button>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={disableAll}>Disable All</Button>
-            </div>
-          </div>
-
-          {/* Meal Grid */}
-          {visibleMeals.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {visibleMeals.map(meal => (
-                <MealToggleCard
-                  key={meal.id}
-                  meal={meal}
-                  onToggle={toggleMeal}
-                  onMealTimesChange={changeMealTimes}
-                  onQuantityLimitChange={setQtyLimit}
-                  individualMeals={individualMeals}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-border bg-muted/20">
-              <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30 mb-3" />
-              <p className="text-sm font-medium text-muted-foreground">No meals match filters</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
-              {mode === 'combo' && (
-                <Button size="sm" className="mt-4" onClick={() => setShowComboModal(true)}>
-                  <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
-                </Button>
-              )}
-              {activeCuisine === 'custom' && mode === 'individual' && (
-                <Button size="sm" className="mt-4" onClick={() => setShowCustomMealModal(true)}>
-                  <Plus className="h-3 w-3 mr-1" /> Create Custom Meal
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: Sticky Summary Panel */}
-        <div className="w-64 xl:w-72 shrink-0 sticky top-4 space-y-3">
-
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-              <ChefHat className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">Availability Summary</span>
-            </div>
-            <div className="p-4 space-y-3">
-              {cuisineTabs.map(tab => {
-                const count = cuisineCounts[tab.key];
-                const pct = count.total > 0 ? Math.round((count.enabled / count.total) * 100) : 0;
-                return (
-                  <div key={tab.key}>
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-foreground font-medium">{tab.emoji} {tab.label}</span>
-                      <span className="text-muted-foreground">{count.enabled}/{count.total}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn('h-full rounded-full transition-all duration-300', pct === 100 ? 'bg-success' : pct > 50 ? 'bg-warning' : 'bg-destructive')}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Schedule Info */}
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-              <CalendarIcon className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">Schedule</span>
-            </div>
-            <div className="p-4 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Mode</span>
-                <Badge variant="outline" className="text-[10px] capitalize">{scheduleMode}</Badge>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Period</span>
-                <span className="text-foreground font-medium text-[11px]">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2 text-xs">
+                  <CalendarIcon className="h-3.5 w-3.5" />
                   {scheduleMode === 'monthly'
-                    ? format(selectedDate, 'MMM yyyy')
-                    : `${customDates.length} date(s)`
+                    ? format(selectedDate, 'MMMM yyyy')
+                    : scheduleMode === 'weekly'
+                      ? `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'dd MMM')}`
+                      : customDates.length > 0
+                        ? `${customDates.length} date(s) selected`
+                        : 'Select dates'
                   }
-                </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                {scheduleMode === 'monthly' ? (
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={d => d && setSelectedDate(d)}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                ) : scheduleMode === 'weekly' ? (
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={d => d && setSelectedDate(d)}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                ) : (
+                  <Calendar
+                    mode="multiple"
+                    selected={customDates}
+                    onSelect={(dates) => dates && setCustomDates(dates)}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                )}
+              </PopoverContent>
+            </Popover>
+
+            {scheduleMode === 'weekly' && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {Array.from({ length: 7 }, (_, i) => {
+                  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+                  const day = addDays(weekStart, i);
+                  return (
+                    <Badge key={i} variant="outline" className="text-[10px]">
+                      {format(day, 'EEE dd')}
+                    </Badge>
+                  );
+                })}
               </div>
-            </div>
+            )}
+
+            {scheduleMode === 'custom' && customDates.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {customDates.slice(0, 5).map(d => (
+                  <Badge key={d.toISOString()} variant="outline" className="text-[10px] gap-1">
+                    {format(d, 'dd MMM')}
+                    <button onClick={() => toggleCustomDate(d)} className="hover:text-destructive">×</button>
+                  </Badge>
+                ))}
+                {customDates.length > 5 && (
+                  <Badge variant="secondary" className="text-[10px]">+{customDates.length - 5} more</Badge>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Business Rule Reminder */}
-          <div className="rounded-xl border border-warning/30 bg-warning/5 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-warning/10 border-b border-warning/20 flex items-center gap-2">
-              <Info className="w-4 h-4 text-warning" />
-              <span className="text-sm font-semibold text-foreground">Order Rule</span>
-            </div>
-            <div className="p-4">
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Employees can place <strong className="text-foreground">only 1 order</strong> per meal time (B/L/D) — either an individual meal OR a combo, not both.
-              </p>
-            </div>
+          {/* ── Info Banner ───────────────────────────────────────────────── */}
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
+            <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
+            <p className="text-xs text-info/90 leading-relaxed">
+              <strong>How it works:</strong> Toggle meals ON to make them visible to employees.
+              {mode === 'individual'
+                ? ' Individual meals are standalone items employees can order one at a time.'
+                : ' Combo meals bundle multiple items together. Use "Create Custom Combo" to build new combos from individual items.'
+              }
+              {' '}Employees can place only ONE order per meal time (Breakfast/Lunch/Dinner) — either an individual meal or a combo, not both.
+            </p>
           </div>
 
-          {/* Quick Guide */}
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">Quick Guide</span>
-            </div>
-            <div className="p-4 space-y-3">
-              {[
-                { icon: '🟢', text: 'Green = meal visible to employees' },
-                { icon: '⚫', text: 'Grey = meal hidden from app' },
-                { icon: '🍽', text: 'Individual = single standalone items' },
-                { icon: '🎁', text: 'Combo = bundled meal packages' },
-                { icon: '🕐', text: 'Click meal time pills to choose B/L/D' },
-                { icon: '📅', text: 'Use Monthly or Custom date scheduling' },
-                { icon: '💾', text: 'Click "Save Changes" to apply' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="text-sm shrink-0">{item.icon}</span>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{item.text}</p>
+          <StatsBar meals={stats} />
+
+          {/* ── Mode Segmented Control ────────────────────────────────────── */}
+          <div className="flex items-center gap-1 p-1 bg-muted rounded-xl w-fit">
+            {(['individual', 'combo'] as ModeKey[]).map(m => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setActiveCuisine('indian'); setActiveMealTime('all'); setSearch(''); }}
+                className={cn(
+                  'px-5 py-2 rounded-lg text-xs font-semibold transition-all capitalize',
+                  mode === m ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {m === 'individual' ? '🍽 Individual Meals' : '🎁 Combo Meals'}
+              </button>
+            ))}
+          </div>
+
+          {/* ── 2-column layout ───────────────────────────────────────────── */}
+          <div className="flex gap-5 items-start">
+
+            {/* LEFT: Meal Configuration */}
+            <div className="flex-1 min-w-0 space-y-4">
+
+              {/* Cuisine pill tabs */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {cuisineTabs.map(tab => {
+                  const count = cuisineCounts[tab.key];
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveCuisine(tab.key)}
+                      className={cn(
+                        'flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all',
+                        activeCuisine === tab.key
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground bg-card',
+                      )}
+                    >
+                      <span>{tab.emoji}</span>
+                      {tab.label}
+                      <span className={cn(
+                        'text-[9px] font-bold px-1.5 py-0.5 rounded-full',
+                        activeCuisine === tab.key
+                          ? 'bg-primary-foreground/20 text-primary-foreground'
+                          : 'bg-success/10 text-success',
+                      )}>
+                        {count.enabled}/{count.total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Filters row */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search meals..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9 text-xs" />
                 </div>
-              ))}
+
+                <div className="flex items-center gap-1 p-0.5 bg-muted rounded-lg">
+                  {mealTimeFilters.map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setActiveMealTime(f.key)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                        activeMealTime === f.key ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <Select value={vegFilter} onValueChange={v => setVegFilter(v as typeof vegFilter)}>
+                  <SelectTrigger className="h-9 w-36 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Types</SelectItem>
+                    <SelectItem value="veg" className="text-xs">🟢 Veg Only</SelectItem>
+                    <SelectItem value="non-veg" className="text-xs">🔴 Non-Veg Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Bulk actions */}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground font-medium">
+                  {visibleMeals.length} meal{visibleMeals.length !== 1 ? 's' : ''} shown
+                  {' · '}
+                  <span className="text-success">{visibleMeals.filter(m => m.enabled).length} enabled</span>
+                  {' · '}
+                  <span className="text-muted-foreground">{visibleMeals.filter(m => !m.enabled).length} disabled</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  {mode === 'combo' && (
+                    <Button size="sm" className="h-7 text-xs" onClick={() => { setEditingCombo(null); setShowComboModal(true); }}>
+                      <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={enableAll}>Enable All</Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={disableAll}>Disable All</Button>
+                </div>
+              </div>
+
+              {/* Meal Grid */}
+              {visibleMeals.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {visibleMeals.map(meal => (
+                    <MealToggleCard
+                      key={meal.id}
+                      meal={meal}
+                      onToggle={toggleMeal}
+                      onMealTimesChange={changeMealTimes}
+                      onQuantityLimitChange={setQtyLimit}
+                      individualMeals={individualMeals}
+                      onEdit={mode === 'combo' ? handleEditCombo : undefined}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-border bg-muted/20">
+                  <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm font-medium text-muted-foreground">No meals match filters</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
+                  {mode === 'combo' && (
+                    <Button size="sm" className="mt-4" onClick={() => { setEditingCombo(null); setShowComboModal(true); }}>
+                      <Plus className="h-3 w-3 mr-1" /> Create Custom Combo
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT: Sticky Summary Panel */}
+            <div className="w-64 xl:w-72 shrink-0 sticky top-4 space-y-3">
+
+              <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+                  <ChefHat className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Availability Summary</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {cuisineTabs.map(tab => {
+                    const count = cuisineCounts[tab.key];
+                    const pct = count.total > 0 ? Math.round((count.enabled / count.total) * 100) : 0;
+                    return (
+                      <div key={tab.key}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-foreground font-medium">{tab.emoji} {tab.label}</span>
+                          <span className="text-muted-foreground">{count.enabled}/{count.total}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all duration-300', pct === 100 ? 'bg-success' : pct > 50 ? 'bg-warning' : 'bg-destructive')}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Schedule Info */}
+              <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Schedule</span>
+                </div>
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Mode</span>
+                    <Badge variant="outline" className="text-[10px] capitalize">{scheduleMode}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Period</span>
+                    <span className="text-foreground font-medium text-[11px]">
+                      {scheduleMode === 'monthly'
+                        ? format(selectedDate, 'MMM yyyy')
+                        : scheduleMode === 'weekly'
+                          ? `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'dd MMM')}`
+                          : `${customDates.length} date(s)`
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Business Rule Reminder */}
+              <div className="rounded-xl border border-warning/30 bg-warning/5 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-warning/10 border-b border-warning/20 flex items-center gap-2">
+                  <Info className="w-4 h-4 text-warning" />
+                  <span className="text-sm font-semibold text-foreground">Order Rule</span>
+                </div>
+                <div className="p-4">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Employees can place <strong className="text-foreground">only 1 order</strong> per meal time (B/L/D) — either an individual meal OR a combo, not both.
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Guide */}
+              <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Quick Guide</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {[
+                    { icon: '🟢', text: 'Green = meal visible to employees' },
+                    { icon: '⚫', text: 'Grey = meal hidden from app' },
+                    { icon: '🍽', text: 'Individual = single standalone items' },
+                    { icon: '🎁', text: 'Combo = bundled meal packages' },
+                    { icon: '🕐', text: 'Click meal time pills to choose B/L/D' },
+                    { icon: '📅', text: 'Use Monthly, Weekly, or Custom date scheduling' },
+                    { icon: '💾', text: 'Click "Save Changes" to apply' },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-sm shrink-0">{item.icon}</span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Button className="w-full h-9 text-xs font-semibold" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving Changes…' : '💾 Save Availability Settings'}
+              </Button>
             </div>
           </div>
-
-          <Button className="w-full h-9 text-xs font-semibold" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving Changes…' : '💾 Save Availability Settings'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Custom Meal Modal */}
-      <CreateCustomMealModal
-        open={showCustomMealModal}
-        onClose={() => setShowCustomMealModal(false)}
-        onSave={handleAddCustomMeal}
-      />
+        </>
+      )}
 
       {/* Combo Builder Modal */}
       <CreateComboModal
         open={showComboModal}
-        onClose={() => setShowComboModal(false)}
-        onSave={handleAddCombo}
+        onClose={() => { setShowComboModal(false); setEditingCombo(null); }}
+        onSave={handleAddOrUpdateCombo}
         individualMeals={individualMeals}
+        editingCombo={editingCombo}
       />
     </div>
   );

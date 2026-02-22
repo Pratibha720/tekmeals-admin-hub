@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Upload, Download, UserCheck, UserX } from 'lucide-react';
+import { Search, Plus, Upload, Download, UserCheck, UserX, Bell } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,6 @@ export default function Employees() {
 
   const handleToggleStatus = async (employee: Employee) => {
     const newStatus = employee.status === 'active' ? 'inactive' : 'active';
-    // Optimistically update UI
     setEmployees(prev => prev.map(e =>
       e.id === employee.id ? { ...e, status: newStatus as EmployeeStatus } : e
     ));
@@ -62,7 +61,6 @@ export default function Employees() {
         description: `${employee.name} is now ${newStatus}.`,
       });
     } catch (error) {
-      // Revert on failure
       setEmployees(prev => prev.map(e =>
         e.id === employee.id ? { ...e, status: employee.status } : e
       ));
@@ -93,6 +91,16 @@ export default function Employees() {
         variant: 'destructive',
       });
     }
+  };
+
+  const handleEmployeeAdded = () => {
+    setShowAddModal(false);
+    fetchEmployees();
+    // Notify super admin
+    toast({
+      title: '📋 Notification Sent to Super Admin',
+      description: 'Super Admin has been notified about the new employee addition.',
+    });
   };
 
   const activeCount = employees.filter(e => e.status === 'active').length;
@@ -159,6 +167,14 @@ export default function Employees() {
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button>
+      </div>
+
+      {/* Info banner */}
+      <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
+        <Bell className="w-4 h-4 text-info shrink-0 mt-0.5" />
+        <p className="text-xs text-info/90 leading-relaxed">
+          When you add a new employee, a notification is automatically sent to the <strong>Super Admin</strong> with the employee details for their records.
+        </p>
       </div>
 
       {/* Filters */}
@@ -271,10 +287,7 @@ export default function Employees() {
       <AddEmployeeModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
-        onSuccess={() => {
-          setShowAddModal(false);
-          fetchEmployees();
-        }}
+        onSuccess={handleEmployeeAdded}
         cities={cities}
       />
 
