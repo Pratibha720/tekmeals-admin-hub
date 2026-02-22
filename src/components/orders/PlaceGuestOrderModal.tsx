@@ -22,6 +22,7 @@ interface PlaceGuestOrderModalProps {
   open: boolean;
   onClose: () => void;
   type: 'guest' | 'custom';
+  onOrderPlaced?: (data: { name: string; type: 'guest' | 'custom'; city: string; items: number; total: number }) => void;
 }
 
 const menuItems = [
@@ -41,7 +42,7 @@ const menuItems = [
 
 const cities = ['Pune', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai'];
 
-export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuestOrderModalProps) {
+export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlaced }: PlaceGuestOrderModalProps) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -81,6 +82,13 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
+  const resetForm = () => {
+    setGuestName(''); setGuestEmail(''); setGuestPhone('');
+    setCity(''); setDeliveryDate(''); setDeliveryTime('');
+    setDeliveryAddress(''); setNotes('');
+    setItems([{ id: '1', name: '', quantity: 1, unitPrice: 0 }]);
+  };
+
   const handleSubmit = async () => {
     if (!guestName || !city || !deliveryDate || items.some(i => !i.name)) {
       toast({ title: 'Please fill required fields', variant: 'destructive' });
@@ -89,17 +97,25 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
     setSaving(true);
     await new Promise(r => setTimeout(r, 1000));
     setSaving(false);
-    toast({
-      title: `✅ ${type === 'guest' ? 'Guest' : 'Custom'} Order Placed!`,
-      description: `Order for ${guestName} with ${totalQty} items (${formatCurrency(totalAmount)}) has been created.`,
-    });
+
+    if (onOrderPlaced) {
+      onOrderPlaced({
+        name: guestName,
+        type,
+        city,
+        items: totalQty,
+        total: totalAmount,
+      });
+    }
+
+    resetForm();
     onClose();
   };
 
   const title = type === 'guest' ? 'Place Guest Order' : 'Place Custom Order';
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={() => { resetForm(); onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -110,6 +126,14 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
         </DialogHeader>
 
         <div className="space-y-5 mt-2">
+          {/* Info Banner */}
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/5 border border-warning/20">
+            <span className="text-sm">📋</span>
+            <p className="text-[11px] text-warning leading-relaxed">
+              This order will be sent to <strong>Super Admin</strong> for approval. Once approved, it will appear in your orders list.
+            </p>
+          </div>
+
           {/* Customer Details */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -118,39 +142,20 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Full Name <span className="text-destructive">*</span></Label>
-                <Input
-                  placeholder="e.g. Rahul Sharma"
-                  value={guestName}
-                  onChange={e => setGuestName(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input placeholder="e.g. Rahul Sharma" value={guestName} onChange={e => setGuestName(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Email</Label>
-                <Input
-                  type="email"
-                  placeholder="rahul@email.com"
-                  value={guestEmail}
-                  onChange={e => setGuestEmail(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input type="email" placeholder="rahul@email.com" value={guestEmail} onChange={e => setGuestEmail(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Phone</Label>
-                <Input
-                  type="tel"
-                  placeholder="+91 98765 43210"
-                  value={guestPhone}
-                  onChange={e => setGuestPhone(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input type="tel" placeholder="+91 98765 43210" value={guestPhone} onChange={e => setGuestPhone(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">City <span className="text-destructive">*</span></Label>
                 <Select value={city} onValueChange={setCity}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select city" />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select city" /></SelectTrigger>
                   <SelectContent>
                     {cities.map(c => <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>)}
                   </SelectContent>
@@ -167,30 +172,15 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Delivery Date <span className="text-destructive">*</span></Label>
-                <Input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={e => setDeliveryDate(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Delivery Time</Label>
-                <Input
-                  type="time"
-                  value={deliveryTime}
-                  onChange={e => setDeliveryTime(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input type="time" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label className="text-xs">Delivery Address</Label>
-                <Input
-                  placeholder="Building, street, area..."
-                  value={deliveryAddress}
-                  onChange={e => setDeliveryAddress(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input placeholder="Building, street, area..." value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} className="h-9 text-sm" />
               </div>
             </div>
           </div>
@@ -209,7 +199,6 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
             </div>
 
             <div className="space-y-2">
-              {/* Header */}
               <div className="grid grid-cols-12 gap-2 px-1">
                 <p className="col-span-5 text-[10px] font-medium text-muted-foreground">Item</p>
                 <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Qty</p>
@@ -221,9 +210,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
                 <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
                   <div className="col-span-5">
                     <Select value={item.name} onValueChange={v => handleMenuSelect(item.id, v)}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select item" />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select item" /></SelectTrigger>
                       <SelectContent>
                         {menuItems.map(m => (
                           <SelectItem key={m.name} value={m.name} className="text-xs">{m.name}</SelectItem>
@@ -232,23 +219,10 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
                     </Select>
                   </div>
                   <div className="col-span-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={item.quantity}
-                      onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                      className="h-8 text-xs text-center"
-                    />
+                    <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })} className="h-8 text-xs text-center" />
                   </div>
                   <div className="col-span-3">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={item.unitPrice || ''}
-                      onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })}
-                      className="h-8 text-xs"
-                      placeholder="0"
-                    />
+                    <Input type="number" min={0} value={item.unitPrice || ''} onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" placeholder="0" />
                   </div>
                   <div className="col-span-1 text-xs font-medium text-foreground text-right">
                     ₹{item.quantity * item.unitPrice}
@@ -256,10 +230,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
                   <div className="col-span-1 flex justify-center">
                     <button
                       onClick={() => removeItem(item.id)}
-                      className={cn(
-                        'text-muted-foreground hover:text-destructive transition-colors',
-                        items.length === 1 && 'opacity-30 cursor-not-allowed',
-                      )}
+                      className={cn('text-muted-foreground hover:text-destructive transition-colors', items.length === 1 && 'opacity-30 cursor-not-allowed')}
                       disabled={items.length === 1}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -275,13 +246,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
           {/* Notes */}
           <div className="space-y-1.5">
             <Label className="text-xs">Special Instructions / Notes</Label>
-            <Textarea
-              placeholder="Allergies, dietary restrictions, delivery notes..."
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="text-sm resize-none"
-              rows={2}
-            />
+            <Textarea placeholder="Allergies, dietary restrictions, delivery notes..." value={notes} onChange={e => setNotes(e.target.value)} className="text-sm resize-none" rows={2} />
           </div>
 
           {/* Order Summary */}
@@ -299,9 +264,9 @@ export default function PlaceGuestOrderModal({ open, onClose, type }: PlaceGuest
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose} className="text-sm">Cancel</Button>
+            <Button variant="outline" onClick={() => { resetForm(); onClose(); }} className="text-sm">Cancel</Button>
             <Button onClick={handleSubmit} disabled={saving} className="text-sm">
-              {saving ? 'Placing Order…' : `Place ${type === 'guest' ? 'Guest' : 'Custom'} Order`}
+              {saving ? 'Submitting…' : `Submit for Approval`}
             </Button>
           </div>
         </div>

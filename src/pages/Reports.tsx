@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Download, BarChart3, Users, MapPin, Utensils, MessageSquareWarning, Filter, TrendingUp, DollarSign } from 'lucide-react';
+import { Download, BarChart3, Users, MapPin, Utensils, MessageSquareWarning } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { reportsApi } from '@/services/api';
 import { OrdersReport, ConsumptionReport, CityUsageReport, MealTrendsReport } from '@/types';
@@ -133,7 +132,7 @@ export default function Reports() {
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-2xl font-bold">{ordersReport.totalOrders.toLocaleString()}</p></CardContent></Card>
-                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold">{formatCurrency(ordersReport.totalAmount)}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Spent</p><p className="text-2xl font-bold">{formatCurrency(ordersReport.totalAmount)}</p></CardContent></Card>
                 <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Avg Order Value</p><p className="text-2xl font-bold">{formatCurrency(ordersReport.averageOrderValue)}</p></CardContent></Card>
                 <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Cancelled</p><p className="text-2xl font-bold text-destructive">{ordersReport.ordersByStatus.cancelled}</p></CardContent></Card>
               </div>
@@ -167,6 +166,55 @@ export default function Reports() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Tabular data below orders */}
+              <Card>
+                <CardHeader><CardTitle className="text-base">Orders by Type — Detailed Breakdown</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Order Type</TableHead>
+                        <TableHead>Count</TableHead>
+                        <TableHead>Percentage</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {Object.entries(ordersReport.ordersByType).map(([type, count]) => (
+                        <TableRow key={type}>
+                          <TableCell className="font-medium capitalize">{type}</TableCell>
+                          <TableCell>{count.toLocaleString()}</TableCell>
+                          <TableCell>{((count / ordersReport.totalOrders) * 100).toFixed(1)}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-base">Orders by Status — Detailed Breakdown</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Count</TableHead>
+                        <TableHead>Percentage</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {Object.entries(ordersReport.ordersByStatus).map(([status, count]) => (
+                        <TableRow key={status}>
+                          <TableCell className="font-medium capitalize">{status}</TableCell>
+                          <TableCell>{count.toLocaleString()}</TableCell>
+                          <TableCell>{((count / ordersReport.totalOrders) * 100).toFixed(1)}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             </>
           )}
         </TabsContent>
@@ -197,7 +245,7 @@ export default function Reports() {
                       <TableRow>
                         <TableHead>Employee</TableHead>
                         <TableHead>Orders</TableHead>
-                        <TableHead>Amount</TableHead>
+                        <TableHead>Amount Spent</TableHead>
                         <TableHead>Breakdown</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -244,7 +292,7 @@ export default function Reports() {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader><CardTitle className="text-base">City Revenue</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">City-wise Spending</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={cityReport.cities}>
@@ -265,10 +313,10 @@ export default function Reports() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>City</TableHead>
-                        <TableHead>Orders</TableHead>
-                        <TableHead>Revenue</TableHead>
+                        <TableHead>Total Orders</TableHead>
+                        <TableHead>Total Spent</TableHead>
                         <TableHead>Employees</TableHead>
-                        <TableHead>Avg/Employee</TableHead>
+                        <TableHead>Avg Orders/Employee</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -323,6 +371,32 @@ export default function Reports() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Meal type breakdown table */}
+              <Card>
+                <CardHeader><CardTitle className="text-base">Meal Type Breakdown</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Meal Type</TableHead>
+                        <TableHead>Order Count</TableHead>
+                        <TableHead>Percentage</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {trendsReport.mealTypes.map(m => (
+                        <TableRow key={m.type}>
+                          <TableCell className="font-medium">{m.type}</TableCell>
+                          <TableCell>{m.orderCount.toLocaleString()}</TableCell>
+                          <TableCell>{m.percentage}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader><CardTitle className="text-base">Popular Items</CardTitle></CardHeader>
                 <CardContent className="p-0">
@@ -344,6 +418,34 @@ export default function Reports() {
                           <TableCell>{item.totalQuantity}</TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              {/* Weekday breakdown table */}
+              <Card>
+                <CardHeader><CardTitle className="text-base">Weekday Order Distribution</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Day</TableHead>
+                        <TableHead>Orders</TableHead>
+                        <TableHead>Percentage</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {trendsReport.weekdayDistribution.map(d => {
+                        const totalWeekday = trendsReport.weekdayDistribution.reduce((s, x) => s + x.orders, 0);
+                        return (
+                          <TableRow key={d.day}>
+                            <TableCell className="font-medium">{d.day}</TableCell>
+                            <TableCell>{d.orders.toLocaleString()}</TableCell>
+                            <TableCell>{((d.orders / totalWeekday) * 100).toFixed(1)}%</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CardContent>

@@ -23,10 +23,10 @@ interface GroceryItem {
 interface PlaceGroceryOrderModalProps {
   open: boolean;
   onClose: () => void;
+  onOrderPlaced?: (data: { vendor: string; city: string; items: number; total: number }) => void;
 }
 
 const groceryCategories = ['Vegetables', 'Fruits', 'Dairy', 'Grains & Pulses', 'Spices', 'Beverages', 'Snacks', 'Frozen Foods', 'Other'];
-
 const units = ['kg', 'gm', 'litre', 'ml', 'pieces', 'dozen', 'packet', 'box', 'can'];
 
 const commonGroceries = [
@@ -47,7 +47,7 @@ const commonGroceries = [
 const vendors = ['Fresh Farm Supplies', 'Metro Cash & Carry', 'City Grocers', 'Daily Fresh', 'BigBasket B2B'];
 const cities = ['Pune', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai'];
 
-export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOrderModalProps) {
+export default function PlaceGroceryOrderModal({ open, onClose, onOrderPlaced }: PlaceGroceryOrderModalProps) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -89,6 +89,11 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
   const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
+  const resetForm = () => {
+    setVendor(''); setCity(''); setDeliveryDate(''); setDeliveryAddress(''); setNotes('');
+    setItems([{ id: '1', name: '', category: '', quantity: 1, unit: 'kg', unitPrice: 0 }]);
+  };
+
   const handleSubmit = async () => {
     if (!vendor || !city || !deliveryDate || items.some(i => !i.name)) {
       toast({ title: 'Please fill required fields', variant: 'destructive' });
@@ -97,15 +102,22 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
     setSaving(true);
     await new Promise(r => setTimeout(r, 1000));
     setSaving(false);
-    toast({
-      title: '✅ Grocery Order Placed!',
-      description: `${totalItems} item(s) ordered from ${vendor} — ${formatCurrency(totalAmount)}.`,
-    });
+
+    if (onOrderPlaced) {
+      onOrderPlaced({
+        vendor,
+        city,
+        items: totalItems,
+        total: totalAmount,
+      });
+    }
+
+    resetForm();
     onClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={() => { resetForm(); onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -116,6 +128,13 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
         </DialogHeader>
 
         <div className="space-y-5 mt-2">
+          {/* Info Banner */}
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/5 border border-warning/20">
+            <span className="text-sm">📋</span>
+            <p className="text-[11px] text-warning leading-relaxed">
+              This order will be sent to <strong>Super Admin</strong> for approval. Once approved, it will be processed.
+            </p>
+          </div>
 
           {/* Vendor & Delivery Info */}
           <div>
@@ -124,9 +143,7 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
               <div className="space-y-1.5">
                 <Label className="text-xs">Vendor / Supplier <span className="text-destructive">*</span></Label>
                 <Select value={vendor} onValueChange={setVendor}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select vendor" />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor" /></SelectTrigger>
                   <SelectContent>
                     {vendors.map(v => <SelectItem key={v} value={v} className="text-sm">{v}</SelectItem>)}
                   </SelectContent>
@@ -135,9 +152,7 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
               <div className="space-y-1.5">
                 <Label className="text-xs">City <span className="text-destructive">*</span></Label>
                 <Select value={city} onValueChange={setCity}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select city" />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select city" /></SelectTrigger>
                   <SelectContent>
                     {cities.map(c => <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>)}
                   </SelectContent>
@@ -145,21 +160,11 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Delivery Date <span className="text-destructive">*</span></Label>
-                <Input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={e => setDeliveryDate(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Delivery Location</Label>
-                <Input
-                  placeholder="Kitchen / warehouse address"
-                  value={deliveryAddress}
-                  onChange={e => setDeliveryAddress(e.target.value)}
-                  className="h-9 text-sm"
-                />
+                <Input placeholder="Kitchen / warehouse address" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} className="h-9 text-sm" />
               </div>
             </div>
           </div>
@@ -178,7 +183,6 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
             </div>
 
             <div className="space-y-2">
-              {/* Header */}
               <div className="grid grid-cols-12 gap-2 px-1">
                 <p className="col-span-4 text-[10px] font-medium text-muted-foreground">Item</p>
                 <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Category</p>
@@ -192,9 +196,7 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
                 <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
                   <div className="col-span-4">
                     <Select value={item.name} onValueChange={v => handleGrocerySelect(item.id, v)}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select item" />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select item" /></SelectTrigger>
                       <SelectContent>
                         {commonGroceries.map(g => (
                           <SelectItem key={g.name} value={g.name} className="text-xs">{g.name}</SelectItem>
@@ -205,9 +207,7 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
                   </div>
                   <div className="col-span-3">
                     <Select value={item.category} onValueChange={v => updateItem(item.id, { category: v })}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
                       <SelectContent>
                         {groceryCategories.map(c => (
                           <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
@@ -216,19 +216,11 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
                     </Select>
                   </div>
                   <div className="col-span-1">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={item.quantity}
-                      onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                      className="h-8 text-xs text-center px-1"
-                    />
+                    <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })} className="h-8 text-xs text-center px-1" />
                   </div>
                   <div className="col-span-1">
                     <Select value={item.unit} onValueChange={v => updateItem(item.id, { unit: v })}>
-                      <SelectTrigger className="h-8 text-xs px-1">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs px-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {units.map(u => (
                           <SelectItem key={u} value={u} className="text-xs">{u}</SelectItem>
@@ -237,22 +229,12 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
                     </Select>
                   </div>
                   <div className="col-span-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={item.unitPrice || ''}
-                      onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })}
-                      className="h-8 text-xs"
-                      placeholder="0"
-                    />
+                    <Input type="number" min={0} value={item.unitPrice || ''} onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" placeholder="0" />
                   </div>
                   <div className="col-span-1 flex justify-center">
                     <button
                       onClick={() => removeItem(item.id)}
-                      className={cn(
-                        'text-muted-foreground hover:text-destructive transition-colors',
-                        items.length === 1 && 'opacity-30 cursor-not-allowed',
-                      )}
+                      className={cn('text-muted-foreground hover:text-destructive transition-colors', items.length === 1 && 'opacity-30 cursor-not-allowed')}
                       disabled={items.length === 1}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -268,13 +250,7 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
           {/* Notes */}
           <div className="space-y-1.5">
             <Label className="text-xs">Special Notes / Instructions</Label>
-            <Textarea
-              placeholder="Quality requirements, brand preferences, storage notes..."
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="text-sm resize-none"
-              rows={2}
-            />
+            <Textarea placeholder="Quality requirements, brand preferences, storage notes..." value={notes} onChange={e => setNotes(e.target.value)} className="text-sm resize-none" rows={2} />
           </div>
 
           {/* Summary */}
@@ -298,9 +274,9 @@ export default function PlaceGroceryOrderModal({ open, onClose }: PlaceGroceryOr
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose} className="text-sm">Cancel</Button>
+            <Button variant="outline" onClick={() => { resetForm(); onClose(); }} className="text-sm">Cancel</Button>
             <Button onClick={handleSubmit} disabled={saving} className="text-sm">
-              {saving ? 'Placing Order…' : 'Place Grocery Order'}
+              {saving ? 'Submitting…' : 'Submit for Approval'}
             </Button>
           </div>
         </div>
