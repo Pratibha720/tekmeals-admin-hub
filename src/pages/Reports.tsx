@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Download, BarChart3, Users, MapPin, Utensils, MessageSquareWarning } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,25 +14,28 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const COLORS = ['hsl(24,95%,53%)', 'hsl(38,92%,50%)', 'hsl(142,71%,45%)', 'hsl(199,89%,48%)', 'hsl(280,65%,60%)'];
 
 interface Complaint {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  city: string;
+  id: string; employeeId: string; employeeName: string; city: string;
   type: 'food_quality' | 'delivery' | 'system_issue' | 'other';
-  subject: string;
-  description: string;
+  subject: string; description: string;
   status: 'open' | 'in_progress' | 'resolved';
-  priority: 'low' | 'medium' | 'high';
-  createdAt: string;
+  priority: 'low' | 'medium' | 'high'; createdAt: string;
 }
 
 const mockComplaints: Complaint[] = [
-  { id: 'c1', employeeId: 'emp1', employeeName: 'Rahul Sharma', city: 'Mumbai', type: 'food_quality', subject: 'Cold food delivery', description: 'The lunch was delivered cold today. Needs better packaging.', status: 'open', priority: 'high', createdAt: '2026-02-12T09:30:00Z' },
-  { id: 'c2', employeeId: 'emp2', employeeName: 'Priya Patel', city: 'Delhi', type: 'system_issue', subject: 'Cannot place order from app', description: 'Getting error when trying to place order via mobile app since morning.', status: 'in_progress', priority: 'high', createdAt: '2026-02-11T14:00:00Z' },
+  { id: 'c1', employeeId: 'emp1', employeeName: 'Rahul Sharma', city: 'Mumbai', type: 'food_quality', subject: 'Cold food delivery', description: 'The lunch was delivered cold today.', status: 'open', priority: 'high', createdAt: '2026-02-12T09:30:00Z' },
+  { id: 'c2', employeeId: 'emp2', employeeName: 'Priya Patel', city: 'Delhi', type: 'system_issue', subject: 'Cannot place order from app', description: 'Getting error when trying to place order.', status: 'in_progress', priority: 'high', createdAt: '2026-02-11T14:00:00Z' },
   { id: 'c3', employeeId: 'emp3', employeeName: 'Amit Kumar', city: 'Bangalore', type: 'delivery', subject: 'Late delivery', description: 'Lunch was delivered 45 minutes late.', status: 'resolved', priority: 'medium', createdAt: '2026-02-10T12:00:00Z' },
   { id: 'c4', employeeId: 'emp5', employeeName: 'Vikram Singh', city: 'Chennai', type: 'food_quality', subject: 'Wrong item received', description: 'Ordered Veg Thali but received Non-Veg.', status: 'open', priority: 'high', createdAt: '2026-02-11T13:00:00Z' },
-  { id: 'c5', employeeId: 'emp4', employeeName: 'Sneha Reddy', city: 'Hyderabad', type: 'other', subject: 'Menu variety', description: 'Request to add more South Indian options for breakfast.', status: 'open', priority: 'low', createdAt: '2026-02-09T10:00:00Z' },
+  { id: 'c5', employeeId: 'emp4', employeeName: 'Sneha Reddy', city: 'Hyderabad', type: 'other', subject: 'Menu variety', description: 'Request to add more South Indian options.', status: 'open', priority: 'low', createdAt: '2026-02-09T10:00:00Z' },
 ];
+
+// Period-based multipliers for dynamic report data
+const periodMultipliers: Record<string, { orders: number; amount: number; trendDays: number; label: string }> = {
+  daily: { orders: 0.03, amount: 0.03, trendDays: 1, label: 'Today' },
+  weekly: { orders: 0.25, amount: 0.25, trendDays: 7, label: 'This Week' },
+  monthly: { orders: 1, amount: 1, trendDays: 30, label: 'This Month' },
+  quarterly: { orders: 3, amount: 3, trendDays: 90, label: 'This Quarter' },
+};
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -72,6 +75,82 @@ export default function Reports() {
     fetchReports();
   }, [period]);
 
+  // Apply period multiplier to data
+  const mult = periodMultipliers[period] || periodMultipliers.monthly;
+
+  const scaledOrders = useMemo(() => {
+    if (!ordersReport) return null;
+    const m = mult.orders;
+    return {
+      ...ordersReport,
+      totalOrders: Math.round(ordersReport.totalOrders * m),
+      totalAmount: Math.round(ordersReport.totalAmount * m),
+      averageOrderValue: ordersReport.averageOrderValue,
+      ordersByStatus: Object.fromEntries(
+        Object.entries(ordersReport.ordersByStatus).map(([k, v]) => [k, Math.round(v * m)])
+      ),
+      ordersByType: Object.fromEntries(
+        Object.entries(ordersReport.ordersByType).map(([k, v]) => [k, Math.round(v * m)])
+      ),
+      dailyTrend: ordersReport.dailyTrend.slice(-mult.trendDays).map(d => ({
+        ...d,
+        orders: Math.round(d.orders * (m > 1 ? 1 : m * 30)),
+        amount: Math.round(d.amount * (m > 1 ? 1 : m * 30)),
+      })),
+    };
+  }, [ordersReport, mult]);
+
+  const scaledConsumption = useMemo(() => {
+    if (!consumptionReport) return null;
+    const m = mult.orders;
+    return {
+      ...consumptionReport,
+      employees: consumptionReport.employees.map(e => ({
+        ...e,
+        totalOrders: Math.round(e.totalOrders * m),
+        totalAmount: Math.round(e.totalAmount * m),
+      })),
+      topConsumers: consumptionReport.topConsumers.map(e => ({
+        ...e,
+        amount: Math.round(e.amount * m),
+      })),
+    };
+  }, [consumptionReport, mult]);
+
+  const scaledCity = useMemo(() => {
+    if (!cityReport) return null;
+    const m = mult.orders;
+    return {
+      ...cityReport,
+      cities: cityReport.cities.map(c => ({
+        ...c,
+        totalOrders: Math.round(c.totalOrders * m),
+        totalAmount: Math.round(c.totalAmount * m),
+      })),
+    };
+  }, [cityReport, mult]);
+
+  const scaledTrends = useMemo(() => {
+    if (!trendsReport) return null;
+    const m = mult.orders;
+    return {
+      ...trendsReport,
+      mealTypes: trendsReport.mealTypes.map(t => ({
+        ...t,
+        orderCount: Math.round(t.orderCount * m),
+      })),
+      popularItems: trendsReport.popularItems.map(t => ({
+        ...t,
+        orderCount: Math.round(t.orderCount * m),
+        totalQuantity: Math.round(t.totalQuantity * m),
+      })),
+      weekdayDistribution: trendsReport.weekdayDistribution.map(d => ({
+        ...d,
+        orders: Math.round(d.orders * m),
+      })),
+    };
+  }, [trendsReport, mult]);
+
   const handleExport = (format: 'csv' | 'xlsx') => {
     toast({ title: 'Export Started', description: `Report exported as ${format.toUpperCase()}.` });
   };
@@ -96,7 +175,9 @@ export default function Reports() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Reports & Analytics</h2>
-          <p className="text-sm text-muted-foreground">Comprehensive reports and issue tracking</p>
+          <p className="text-sm text-muted-foreground">
+            {mult.label} — Comprehensive reports and issue tracking
+          </p>
         </div>
         <div className="flex gap-2">
           <Select value={period} onValueChange={setPeriod}>
@@ -108,12 +189,8 @@ export default function Reports() {
               <SelectItem value="quarterly">Quarterly</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>
-            <Download className="h-4 w-4 mr-2" /> CSV
-          </Button>
-          <Button size="sm" onClick={() => handleExport('xlsx')}>
-            <Download className="h-4 w-4 mr-2" /> Excel
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExport('csv')}><Download className="h-4 w-4 mr-2" /> CSV</Button>
+          <Button size="sm" onClick={() => handleExport('xlsx')}><Download className="h-4 w-4 mr-2" /> Excel</Button>
         </div>
       </div>
 
@@ -128,20 +205,20 @@ export default function Reports() {
 
         {/* Orders Report */}
         <TabsContent value="orders" className="space-y-4">
-          {ordersReport && (
+          {scaledOrders && (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-2xl font-bold">{ordersReport.totalOrders.toLocaleString()}</p></CardContent></Card>
-                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Spent</p><p className="text-2xl font-bold">{formatCurrency(ordersReport.totalAmount)}</p></CardContent></Card>
-                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Avg Order Value</p><p className="text-2xl font-bold">{formatCurrency(ordersReport.averageOrderValue)}</p></CardContent></Card>
-                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Cancelled</p><p className="text-2xl font-bold text-destructive">{ordersReport.ordersByStatus.cancelled}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-2xl font-bold">{scaledOrders.totalOrders.toLocaleString()}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Spent</p><p className="text-2xl font-bold">{formatCurrency(scaledOrders.totalAmount)}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Avg Order Value</p><p className="text-2xl font-bold">{formatCurrency(scaledOrders.averageOrderValue)}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Cancelled</p><p className="text-2xl font-bold text-destructive">{scaledOrders.ordersByStatus.cancelled}</p></CardContent></Card>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card>
-                  <CardHeader><CardTitle className="text-base">Daily Order Trend</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">{period === 'daily' ? 'Hourly' : 'Daily'} Order Trend</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={ordersReport.dailyTrend.slice(-14)}>
+                      <LineChart data={scaledOrders.dailyTrend}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" tickFormatter={v => v.slice(5)} fontSize={12} />
                         <YAxis fontSize={12} />
@@ -155,7 +232,7 @@ export default function Reports() {
                   <CardHeader><CardTitle className="text-base">Orders by Status</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={Object.entries(ordersReport.ordersByStatus).map(([name, value]) => ({ name, value }))}>
+                      <BarChart data={Object.entries(scaledOrders.ordersByStatus).map(([name, value]) => ({ name, value }))}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" fontSize={12} />
                         <YAxis fontSize={12} />
@@ -166,49 +243,34 @@ export default function Reports() {
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Tabular data below orders */}
               <Card>
-                <CardHeader><CardTitle className="text-base">Orders by Type — Detailed Breakdown</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">Orders by Type — Detailed</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Order Type</TableHead>
-                        <TableHead>Count</TableHead>
-                        <TableHead>Percentage</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Order Type</TableHead><TableHead>Count</TableHead><TableHead>Percentage</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {Object.entries(ordersReport.ordersByType).map(([type, count]) => (
+                      {Object.entries(scaledOrders.ordersByType).map(([type, count]) => (
                         <TableRow key={type}>
                           <TableCell className="font-medium capitalize">{type}</TableCell>
                           <TableCell>{count.toLocaleString()}</TableCell>
-                          <TableCell>{((count / ordersReport.totalOrders) * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{((count / scaledOrders.totalOrders) * 100).toFixed(1)}%</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </CardContent>
               </Card>
-
               <Card>
-                <CardHeader><CardTitle className="text-base">Orders by Status — Detailed Breakdown</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">Orders by Status — Detailed</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Count</TableHead>
-                        <TableHead>Percentage</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>Count</TableHead><TableHead>Percentage</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {Object.entries(ordersReport.ordersByStatus).map(([status, count]) => (
+                      {Object.entries(scaledOrders.ordersByStatus).map(([status, count]) => (
                         <TableRow key={status}>
                           <TableCell className="font-medium capitalize">{status}</TableCell>
                           <TableCell>{count.toLocaleString()}</TableCell>
-                          <TableCell>{((count / ordersReport.totalOrders) * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{((count / scaledOrders.totalOrders) * 100).toFixed(1)}%</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -219,15 +281,15 @@ export default function Reports() {
           )}
         </TabsContent>
 
-        {/* Consumption Report */}
+        {/* Consumption */}
         <TabsContent value="consumption" className="space-y-4">
-          {consumptionReport && (
+          {scaledConsumption && (
             <>
               <Card>
                 <CardHeader><CardTitle className="text-base">Top Consumers</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={consumptionReport.topConsumers} layout="vertical">
+                    <BarChart data={scaledConsumption.topConsumers} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" fontSize={12} />
                       <YAxis dataKey="employeeName" type="category" width={120} fontSize={12} />
@@ -241,16 +303,9 @@ export default function Reports() {
                 <CardHeader><CardTitle className="text-base">Employee Consumption Details</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Orders</TableHead>
-                        <TableHead>Amount Spent</TableHead>
-                        <TableHead>Breakdown</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Orders</TableHead><TableHead>Amount Spent</TableHead><TableHead>Breakdown</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {consumptionReport.employees.map(emp => (
+                      {scaledConsumption.employees.map(emp => (
                         <TableRow key={emp.employeeId}>
                           <TableCell className="font-medium">{emp.employeeName}</TableCell>
                           <TableCell>{emp.totalOrders}</TableCell>
@@ -272,9 +327,9 @@ export default function Reports() {
           )}
         </TabsContent>
 
-        {/* City Report */}
+        {/* City */}
         <TabsContent value="city" className="space-y-4">
-          {cityReport && (
+          {scaledCity && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card>
@@ -282,11 +337,10 @@ export default function Reports() {
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
-                        <Pie data={cityReport.cities.map(c => ({ name: c.city, value: c.totalOrders }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                          {cityReport.cities.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        <Pie data={scaledCity.cities.map(c => ({ name: c.city, value: c.totalOrders }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                          {scaledCity.cities.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip />
-                        <Legend />
+                        <Tooltip /><Legend />
                       </PieChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -295,7 +349,7 @@ export default function Reports() {
                   <CardHeader><CardTitle className="text-base">City-wise Spending</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={cityReport.cities}>
+                      <BarChart data={scaledCity.cities}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="city" fontSize={12} />
                         <YAxis fontSize={12} />
@@ -310,17 +364,9 @@ export default function Reports() {
                 <CardHeader><CardTitle className="text-base">City Details</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>City</TableHead>
-                        <TableHead>Total Orders</TableHead>
-                        <TableHead>Total Spent</TableHead>
-                        <TableHead>Employees</TableHead>
-                        <TableHead>Avg Orders/Employee</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>City</TableHead><TableHead>Total Orders</TableHead><TableHead>Total Spent</TableHead><TableHead>Employees</TableHead><TableHead>Avg Orders/Employee</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {cityReport.cities.map(c => (
+                      {scaledCity.cities.map(c => (
                         <TableRow key={c.city}>
                           <TableCell className="font-medium">{c.city}</TableCell>
                           <TableCell>{c.totalOrders.toLocaleString()}</TableCell>
@@ -337,9 +383,9 @@ export default function Reports() {
           )}
         </TabsContent>
 
-        {/* Trends Report */}
+        {/* Trends */}
         <TabsContent value="trends" className="space-y-4">
-          {trendsReport && (
+          {scaledTrends && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card>
@@ -347,11 +393,10 @@ export default function Reports() {
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
-                        <Pie data={trendsReport.mealTypes.map(m => ({ name: m.type, value: m.orderCount }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                          {trendsReport.mealTypes.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        <Pie data={scaledTrends.mealTypes.map(m => ({ name: m.type, value: m.orderCount }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                          {scaledTrends.mealTypes.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip />
-                        <Legend />
+                        <Tooltip /><Legend />
                       </PieChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -360,7 +405,7 @@ export default function Reports() {
                   <CardHeader><CardTitle className="text-base">Weekday Distribution</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={trendsReport.weekdayDistribution}>
+                      <BarChart data={scaledTrends.weekdayDistribution}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="day" fontSize={12} tickFormatter={v => v.slice(0, 3)} />
                         <YAxis fontSize={12} />
@@ -371,79 +416,42 @@ export default function Reports() {
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Meal type breakdown table */}
               <Card>
                 <CardHeader><CardTitle className="text-base">Meal Type Breakdown</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Meal Type</TableHead>
-                        <TableHead>Order Count</TableHead>
-                        <TableHead>Percentage</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Meal Type</TableHead><TableHead>Order Count</TableHead><TableHead>Percentage</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {trendsReport.mealTypes.map(m => (
-                        <TableRow key={m.type}>
-                          <TableCell className="font-medium">{m.type}</TableCell>
-                          <TableCell>{m.orderCount.toLocaleString()}</TableCell>
-                          <TableCell>{m.percentage}%</TableCell>
-                        </TableRow>
+                      {scaledTrends.mealTypes.map(m => (
+                        <TableRow key={m.type}><TableCell className="font-medium">{m.type}</TableCell><TableCell>{m.orderCount.toLocaleString()}</TableCell><TableCell>{m.percentage}%</TableCell></TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader><CardTitle className="text-base">Popular Items</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>Item</TableHead>
-                        <TableHead>Orders</TableHead>
-                        <TableHead>Total Quantity</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Item</TableHead><TableHead>Orders</TableHead><TableHead>Total Quantity</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {trendsReport.popularItems.map((item, i) => (
-                        <TableRow key={item.productId}>
-                          <TableCell><Badge variant="outline">{i + 1}</Badge></TableCell>
-                          <TableCell className="font-medium">{item.productName}</TableCell>
-                          <TableCell>{item.orderCount}</TableCell>
-                          <TableCell>{item.totalQuantity}</TableCell>
-                        </TableRow>
+                      {scaledTrends.popularItems.map((item, i) => (
+                        <TableRow key={item.productId}><TableCell><Badge variant="outline">{i + 1}</Badge></TableCell><TableCell className="font-medium">{item.productName}</TableCell><TableCell>{item.orderCount}</TableCell><TableCell>{item.totalQuantity}</TableCell></TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </CardContent>
               </Card>
-
-              {/* Weekday breakdown table */}
               <Card>
                 <CardHeader><CardTitle className="text-base">Weekday Order Distribution</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Day</TableHead>
-                        <TableHead>Orders</TableHead>
-                        <TableHead>Percentage</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Day</TableHead><TableHead>Orders</TableHead><TableHead>Percentage</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {trendsReport.weekdayDistribution.map(d => {
-                        const totalWeekday = trendsReport.weekdayDistribution.reduce((s, x) => s + x.orders, 0);
+                      {scaledTrends.weekdayDistribution.map(d => {
+                        const total = scaledTrends.weekdayDistribution.reduce((s, x) => s + x.orders, 0);
                         return (
-                          <TableRow key={d.day}>
-                            <TableCell className="font-medium">{d.day}</TableCell>
-                            <TableCell>{d.orders.toLocaleString()}</TableCell>
-                            <TableCell>{((d.orders / totalWeekday) * 100).toFixed(1)}%</TableCell>
-                          </TableRow>
+                          <TableRow key={d.day}><TableCell className="font-medium">{d.day}</TableCell><TableCell>{d.orders.toLocaleString()}</TableCell><TableCell>{((d.orders / total) * 100).toFixed(1)}%</TableCell></TableRow>
                         );
                       })}
                     </TableBody>
@@ -454,7 +462,7 @@ export default function Reports() {
           )}
         </TabsContent>
 
-        {/* Complaints / Issues */}
+        {/* Issues */}
         <TabsContent value="complaints" className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Issues</p><p className="text-2xl font-bold">{complaints.length}</p></CardContent></Card>
@@ -487,10 +495,7 @@ export default function Reports() {
                       <TableCell className="hidden sm:table-cell">{c.city}</TableCell>
                       <TableCell><Badge variant="outline" className="text-xs capitalize">{c.type.replace('_', ' ')}</Badge></TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium text-sm">{c.subject}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
-                        </div>
+                        <div><p className="font-medium text-sm">{c.subject}</p><p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p></div>
                       </TableCell>
                       <TableCell>{priorityBadge(c.priority)}</TableCell>
                       <TableCell>{statusBadge(c.status)}</TableCell>
