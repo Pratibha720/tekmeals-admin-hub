@@ -6,12 +6,21 @@ import { cn } from '@/lib/utils';
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        onToggle={() => setSidebarOpen(!sidebarOpen)} 
+        isCollapsed={isCollapsed}
+        onCollapseToggle={() => setIsCollapsed(!isCollapsed)}
+      />
       
-      <div className={cn("md:ml-64 flex flex-col min-h-screen")}>
+      <div className={cn(
+        "flex flex-col min-h-screen transition-all duration-300",
+        isCollapsed ? "md:ml-16" : "md:ml-64"
+      )}>
         <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
         
         <main className="flex-1 p-4 md:p-6">

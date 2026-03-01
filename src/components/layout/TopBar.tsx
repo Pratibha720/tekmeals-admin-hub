@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Menu, Bell, Search } from 'lucide-react';
+import { Menu, Bell, Search, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,6 +23,7 @@ const pageTitles: Record<string, string> = {
   '/orders': 'Orders',
   '/orders/today': 'Today Orders',
   '/orders/custom': 'Custom / Guest Orders',
+  '/orders/groceries': 'Groceries',
   '/employees': 'Employees',
   '/products': 'Products',
   '/billing': 'Billing',
@@ -31,16 +32,50 @@ const pageTitles: Record<string, string> = {
   '/settings': 'Settings',
 };
 
+interface Notification {
+  id: number;
+  title: string;
+  description: string;
+  unread: boolean;
+  timestamp: Date;
+  type: 'order' | 'employee' | 'system' | 'approval';
+}
+
+// Notification event system
+const notificationListeners: ((n: Notification) => void)[] = [];
+export function pushNotification(n: Omit<Notification, 'id' | 'unread' | 'timestamp'>) {
+  const notification: Notification = {
+    ...n,
+    id: Date.now(),
+    unread: true,
+    timestamp: new Date(),
+  };
+  notificationListeners.forEach(fn => fn(notification));
+}
+
 export default function TopBar({ onMenuClick }: TopBarProps) {
   const location = useLocation();
   const { toast } = useToast();
   const pageTitle = pageTitles[location.pathname] || 'Dashboard';
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: 'New order placed', description: '5 minutes ago', unread: true },
-    { id: 2, title: 'Invoice generated', description: '1 hour ago', unread: true },
-    { id: 3, title: 'Employee added', description: '2 hours ago', unread: false },
+  const [notifications, setNotifications] = useState<Notification[]>([
+    { id: 1, title: 'New order placed', description: '5 minutes ago', unread: true, timestamp: new Date(Date.now() - 5 * 60000), type: 'order' },
+    { id: 2, title: 'Invoice generated', description: '1 hour ago', unread: true, timestamp: new Date(Date.now() - 60 * 60000), type: 'system' },
+    { id: 3, title: 'Employee added', description: '2 hours ago', unread: false, timestamp: new Date(Date.now() - 120 * 60000), type: 'employee' },
   ]);
+
+  // Listen for new notifications
+  useEffect(() => {
+    const handler = (n: Notification) => {
+      setNotifications(prev => [n, ...prev]);
+      toast({ title: `🔔 ${n.title}`, description: n.description });
+    };
+    notificationListeners.push(handler);
+    return () => {
+      const idx = notificationListeners.indexOf(handler);
+      if (idx >= 0) notificationListeners.splice(idx, 1);
+    };
+  }, [toast]);
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -51,6 +86,32 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
     toast({ title: 'All notifications marked as read' });
+  };
+
+  const deleteNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const clearAll = () => {
+    setNotifications([]);
+    toast({ title: 'All notifications cleared' });
+  };
+
+  const getTimeAgo = (timestamp: Date) => {
+    const diff = Date.now() - timestamp.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const typeIcon: Record<string, string> = {
+    order: '🛒',
+    employee: '👤',
+    system: '⚙️',
+    approval: '📋',
   };
 
   return (
@@ -83,29 +144,56 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-80">
           <DropdownMenuLabel className="flex items-center justify-between">
-            <span>Notifications</span>
-            {unreadCount > 0 && (
-              <button onClick={(e) => { e.stopPropagation(); markAllAsRead(); }} className="text-xs text-primary hover:underline font-normal">
-                Mark all read
-              </button>
-            )}
+            <span>Notifications {unreadCount > 0 && `(${unreadCount})`}</span>
+            <div className="flex gap-1">
+              {unreadCount > 0 && (
+                <button onClick={(e) => { e.stopPropagation(); markAllAsRead(); }} className="text-xs text-primary hover:underline font-normal">
+                  Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">·</span>
+                  <button onClick={(e) => { e.stopPropagation(); clearAll(); }} className="text-xs text-muted-foreground hover:text-destructive font-normal">
+                    Clear all
+                  </button>
+                </>
+              )}
+            </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {notifications.map((notification) => (
-            <DropdownMenuItem
-              key={notification.id}
-              className="flex flex-col items-start gap-1 p-3 cursor-pointer"
-              onClick={() => markAsRead(notification.id)}
-            >
-              <div className="flex items-center gap-2">
-                {notification.unread && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
-                <span className={`font-medium ${notification.unread ? '' : 'text-muted-foreground'}`}>{notification.title}</span>
-              </div>
-              <span className="text-xs text-muted-foreground">{notification.description}</span>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="justify-center text-primary">View all notifications</DropdownMenuItem>
+          {notifications.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">No notifications</div>
+          ) : (
+            notifications.slice(0, 10).map((notification) => (
+              <DropdownMenuItem
+                key={notification.id}
+                className="flex items-start gap-2 p-3 cursor-pointer"
+                onClick={() => markAsRead(notification.id)}
+              >
+                <span className="text-sm mt-0.5 shrink-0">{typeIcon[notification.type] || '🔔'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    {notification.unread && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
+                    <span className={`font-medium text-sm ${notification.unread ? '' : 'text-muted-foreground'}`}>{notification.title}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{notification.description || getTimeAgo(notification.timestamp)}</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteNotification(notification.id); }}
+                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </DropdownMenuItem>
+            ))
+          )}
+          {notifications.length > 10 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="justify-center text-primary text-sm">View all notifications</DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

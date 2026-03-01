@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Download, Eye, Plus, ShoppingCart, ShoppingBag, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -43,16 +43,31 @@ interface PlacedOrder {
   notes?: string;
 }
 
-// Mock grocery orders for the new groceries tab
 const mockGroceryOrders = [
   { id: 'g1', orderNumber: 'GRO-2024-001', vendor: 'Fresh Farm Supplies', city: 'Mumbai', items: 12, totalAmount: 4800, orderDate: '2024-01-15T10:00:00Z', status: 'delivered' as OrderStatus, deliveryDate: '2024-01-16T08:00:00Z' },
   { id: 'g2', orderNumber: 'GRO-2024-002', vendor: 'Metro Cash & Carry', city: 'Delhi', items: 8, totalAmount: 3200, orderDate: '2024-01-15T11:00:00Z', status: 'confirmed' as OrderStatus, deliveryDate: '2024-01-17T09:00:00Z' },
   { id: 'g3', orderNumber: 'GRO-2024-003', vendor: 'City Grocers', city: 'Pune', items: 15, totalAmount: 6500, orderDate: '2024-01-14T09:00:00Z', status: 'pending' as OrderStatus, deliveryDate: '2024-01-16T10:00:00Z' },
 ];
 
+// Map routes to tab values
+const routeToTab: Record<string, string> = {
+  '/orders': 'all',
+  '/orders/today': 'today',
+  '/orders/custom': 'custom',
+  '/orders/groceries': 'groceries',
+};
+
+const tabToRoute: Record<string, string> = {
+  all: '/orders',
+  today: '/orders/today',
+  custom: '/orders/custom',
+  groceries: '/orders/groceries',
+};
+
 export default function Orders() {
   const { toast } = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +80,8 @@ export default function Orders() {
   const [groceryModalOpen, setGroceryModalOpen] = useState(false);
   const [placedOrders, setPlacedOrders] = useState<PlacedOrder[]>([]);
 
-  const activeTab = searchParams.get('tab') || 'all';
+  // Derive active tab from current route
+  const activeTab = routeToTab[location.pathname] || 'all';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -90,12 +106,11 @@ export default function Orders() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [activeTab, selectedCity, selectedStatus, search]);
 
   const handleTabChange = (value: string) => {
-    setSearchParams({ tab: value });
+    navigate(tabToRoute[value] || '/orders');
   };
 
   const handleExport = async () => {
@@ -111,21 +126,11 @@ export default function Orders() {
     }
   };
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (date: string) =>
+    new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
   const handleGuestOrderPlaced = (orderData: { name: string; type: 'guest' | 'custom'; city: string; items: number; total: number }) => {
     const newOrder: PlacedOrder = {
@@ -167,7 +172,6 @@ export default function Orders() {
 
   const isGuestOrCustomTab = activeTab === 'custom' || activeTab === 'guest';
   const isGroceriesTab = activeTab === 'groceries';
-
   const customGuestPlacedOrders = placedOrders.filter(o => o.type === 'guest' || o.type === 'custom');
   const groceryPlacedOrders = placedOrders.filter(o => o.type === 'grocery');
 
@@ -188,69 +192,43 @@ export default function Orders() {
           <div className="flex items-center gap-2">
             {isGuestOrCustomTab && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { setGuestModalType('guest'); setGuestModalOpen(true); }}
-                  className="gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Place Guest Order
+                <Button size="sm" variant="outline" onClick={() => { setGuestModalType('guest'); setGuestModalOpen(true); }} className="gap-1.5">
+                  <Plus className="h-3.5 w-3.5" /> Place Guest Order
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => { setGuestModalType('custom'); setGuestModalOpen(true); }}
-                  className="gap-1.5"
-                >
-                  <ShoppingBag className="h-3.5 w-3.5" />
-                  Place Custom Order
+                <Button size="sm" onClick={() => { setGuestModalType('custom'); setGuestModalOpen(true); }} className="gap-1.5">
+                  <ShoppingBag className="h-3.5 w-3.5" /> Place Custom Order
                 </Button>
               </>
             )}
             {isGroceriesTab && (
               <Button size="sm" onClick={() => setGroceryModalOpen(true)} className="gap-1.5">
-                <Plus className="h-3.5 w-3.5" />
-                Place Grocery Order
+                <Plus className="h-3.5 w-3.5" /> Place Grocery Order
               </Button>
             )}
             <Button onClick={handleExport} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
+              <Download className="h-4 w-4 mr-2" /> Export
             </Button>
           </div>
         </div>
 
-        {/* Filters — not shown for groceries */}
+        {/* Filters */}
         {!isGroceriesTab && (
           <Card className="mt-4">
             <CardContent className="pt-6">
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by employee or order number..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9"
-                  />
+                  <Input placeholder="Search by employee or order number..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
                 </div>
-
                 <Select value={selectedCity} onValueChange={setSelectedCity}>
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder="All Cities" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="All Cities" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Cities</SelectItem>
-                    {cities.map((city) => (
-                      <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>
-                    ))}
+                    {cities.map((city) => <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="All Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
@@ -265,7 +243,7 @@ export default function Orders() {
           </Card>
         )}
 
-        {/* ── Standard Orders Tabs ── */}
+        {/* Standard Orders Tabs */}
         {(['all', 'today'].includes(activeTab)) && (
           <TabsContent value={activeTab} className="mt-4">
             <Card>
@@ -299,9 +277,7 @@ export default function Orders() {
                       ))
                     ) : orders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                          No orders found
-                        </TableCell>
+                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No orders found</TableCell>
                       </TableRow>
                     ) : (
                       orders.map((order) => (
@@ -318,16 +294,10 @@ export default function Orders() {
                           <TableCell className="hidden lg:table-cell">{formatCurrency(order.totalAmount)}</TableCell>
                           <TableCell className="hidden md:table-cell">{formatDate(order.orderDate)}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={statusColors[order.status]}>
-                              {order.status}
-                            </Badge>
+                            <Badge variant="outline" className={statusColors[order.status]}>{order.status}</Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setSelectedOrder(order)}
-                            >
+                            <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)}>
                               <Eye className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -341,9 +311,8 @@ export default function Orders() {
           </TabsContent>
         )}
 
-        {/* ── Custom/Guest Orders Tab ── */}
+        {/* Custom/Guest Orders Tab */}
         <TabsContent value="custom" className="mt-4 space-y-4">
-          {/* Existing orders table */}
           <Card>
             <CardContent className="p-0">
               <Table>
@@ -378,68 +347,51 @@ export default function Orders() {
                       <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                         No custom/guest orders found
                         <div className="mt-3 flex justify-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => { setGuestModalType('guest'); setGuestModalOpen(true); }}
-                            className="gap-1.5"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Place Guest Order
+                          <Button size="sm" variant="outline" onClick={() => { setGuestModalType('guest'); setGuestModalOpen(true); }} className="gap-1.5">
+                            <Plus className="h-3.5 w-3.5" /> Place Guest Order
                           </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => { setGuestModalType('custom'); setGuestModalOpen(true); }}
-                            className="gap-1.5"
-                          >
-                            <ShoppingBag className="h-3.5 w-3.5" />
-                            Place Custom Order
+                          <Button size="sm" onClick={() => { setGuestModalType('custom'); setGuestModalOpen(true); }} className="gap-1.5">
+                            <ShoppingBag className="h-3.5 w-3.5" /> Place Custom Order
                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    <>
-                      {orders.map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{order.employeeName}</p>
-                              <p className="text-xs text-muted-foreground">{order.employeeEmail}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">{order.city}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{order.totalQuantity}</TableCell>
-                          <TableCell className="hidden lg:table-cell">{formatCurrency(order.totalAmount)}</TableCell>
-                          <TableCell className="hidden md:table-cell">{formatDate(order.orderDate)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={statusColors[order.status]}>
-                              {order.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </>
+                    orders.map((order) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{order.employeeName}</p>
+                            <p className="text-xs text-muted-foreground">{order.employeeEmail}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{order.city}</TableCell>
+                        <TableCell className="hidden sm:table-cell">{order.totalQuantity}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{formatCurrency(order.totalAmount)}</TableCell>
+                        <TableCell className="hidden md:table-cell">{formatDate(order.orderDate)}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={statusColors[order.status]}>{order.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
                   )}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
 
-          {/* Placed orders awaiting approval */}
           {customGuestPlacedOrders.length > 0 && (
             <Card>
               <CardContent className="p-0">
                 <div className="px-4 py-3 border-b border-border bg-muted/40">
                   <p className="text-sm font-semibold flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-warning" />
-                    Orders Pending Super Admin Approval
+                    <Clock className="w-4 h-4 text-warning" /> Orders Pending Super Admin Approval
                   </p>
                 </div>
                 <Table>
@@ -459,16 +411,13 @@ export default function Orders() {
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">{order.orderNumber}</TableCell>
                         <TableCell className="font-medium">{order.customerName}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs capitalize">{order.type}</Badge>
-                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs capitalize">{order.type}</Badge></TableCell>
                         <TableCell className="hidden md:table-cell">{order.city}</TableCell>
                         <TableCell className="hidden sm:table-cell">{order.items}</TableCell>
                         <TableCell>{formatCurrency(order.totalAmount)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={approvalStatusColors[order.status]}>
-                            <Clock className="w-3 h-3 mr-1" />
-                            Pending Approval
+                            <Clock className="w-3 h-3 mr-1" /> Pending Approval
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -480,9 +429,8 @@ export default function Orders() {
           )}
         </TabsContent>
 
-        {/* ── Groceries Tab ── */}
+        {/* Groceries Tab */}
         <TabsContent value="groceries" className="mt-4 space-y-4">
-          {/* Grocery filters */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex flex-col sm:flex-row gap-4">
@@ -491,20 +439,14 @@ export default function Orders() {
                   <Input placeholder="Search by vendor or order number..." className="pl-9" />
                 </div>
                 <Select defaultValue="all">
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder="All Cities" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="All Cities" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Cities</SelectItem>
-                    {cities.map((city) => (
-                      <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>
-                    ))}
+                    {cities.map((city) => <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select defaultValue="all">
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="All Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
@@ -540,8 +482,7 @@ export default function Orders() {
                           <ShoppingCart className="w-10 h-10 text-muted-foreground/30" />
                           <p className="text-muted-foreground text-sm">No grocery orders yet</p>
                           <Button size="sm" onClick={() => setGroceryModalOpen(true)} className="gap-1.5">
-                            <Plus className="h-3.5 w-3.5" />
-                            Place First Grocery Order
+                            <Plus className="h-3.5 w-3.5" /> Place First Grocery Order
                           </Button>
                         </div>
                       </TableCell>
@@ -564,9 +505,7 @@ export default function Orders() {
                         <TableCell className="hidden md:table-cell">{formatDate(order.orderDate)}</TableCell>
                         <TableCell className="hidden lg:table-cell">{order.deliveryDate ? formatDate(order.deliveryDate) : '-'}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={statusColors[order.status]}>
-                            {order.status}
-                          </Badge>
+                          <Badge variant="outline" className={statusColors[order.status]}>{order.status}</Badge>
                         </TableCell>
                       </TableRow>
                     ))
@@ -576,14 +515,12 @@ export default function Orders() {
             </CardContent>
           </Card>
 
-          {/* Grocery orders pending approval */}
           {groceryPlacedOrders.length > 0 && (
             <Card>
               <CardContent className="p-0">
                 <div className="px-4 py-3 border-b border-border bg-muted/40">
                   <p className="text-sm font-semibold flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-warning" />
-                    Grocery Orders Pending Super Admin Approval
+                    <Clock className="w-4 h-4 text-warning" /> Grocery Orders Pending Super Admin Approval
                   </p>
                 </div>
                 <Table>
@@ -607,8 +544,7 @@ export default function Orders() {
                         <TableCell>{formatCurrency(order.totalAmount)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={approvalStatusColors[order.status]}>
-                            <Clock className="w-3 h-3 mr-1" />
-                            Pending Approval
+                            <Clock className="w-3 h-3 mr-1" /> Pending Approval
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -621,25 +557,9 @@ export default function Orders() {
         </TabsContent>
       </Tabs>
 
-      {/* Modals */}
-      <OrderDetailsModal
-        order={selectedOrder}
-        open={!!selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-      />
-
-      <PlaceGuestOrderModal
-        open={guestModalOpen}
-        onClose={() => setGuestModalOpen(false)}
-        type={guestModalType}
-        onOrderPlaced={handleGuestOrderPlaced}
-      />
-
-      <PlaceGroceryOrderModal
-        open={groceryModalOpen}
-        onClose={() => setGroceryModalOpen(false)}
-        onOrderPlaced={handleGroceryOrderPlaced}
-      />
+      <OrderDetailsModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
+      <PlaceGuestOrderModal open={guestModalOpen} onClose={() => setGuestModalOpen(false)} type={guestModalType} onOrderPlaced={handleGuestOrderPlaced} />
+      <PlaceGroceryOrderModal open={groceryModalOpen} onClose={() => setGroceryModalOpen(false)} onOrderPlaced={handleGroceryOrderPlaced} />
     </div>
   );
 }
