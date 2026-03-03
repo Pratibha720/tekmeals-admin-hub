@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2, Minus, Pencil, Calendar as CalendarIconLucide } from 'lucide-react';
-import { format, isSameDay, startOfWeek, addDays } from 'date-fns';
+import { Search, ToggleLeft, Utensils, UtensilsCrossed, BookOpen, ChefHat, Info, CalendarIcon, Plus, Trash2, Minus, Pencil } from 'lucide-react';
+import { format, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -23,7 +23,7 @@ type MealTime = 'Breakfast' | 'Lunch' | 'Dinner';
 type VegType = 'veg' | 'non-veg';
 type CuisineKey = 'indian' | 'chinese' | 'continental';
 type ModeKey = 'individual' | 'combo';
-type ScheduleMode = 'monthly' | 'custom' | 'weekly';
+type ScheduleMode = 'monthly' | 'custom';
 type MealType = 'individual' | 'combo';
 type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
 
@@ -126,16 +126,6 @@ const mealTimeFilters: { key: MealTime | 'all'; label: string }[] = [
   { key: 'Dinner', label: 'Dinner' },
 ];
 
-// Mock day-wise meal schedule
-const defaultDayWiseMeals: Record<DayOfWeek, string[]> = {
-  Monday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'ind-salad', 'ind-sweet', 'combo-1'],
-  Tuesday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-chicken', 'ind-salad', 'ch-friedrice', 'ch-noodles', 'combo-2'],
-  Wednesday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'co-pasta', 'co-garlic-bread', 'combo-3'],
-  Thursday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-mutton', 'ch-manchurian', 'ch-momos', 'combo-1'],
-  Friday: ['ind-roti', 'ind-dal', 'ind-rice', 'ind-paneer', 'ind-sweet', 'co-grilled-chicken', 'combo-3'],
-  Saturday: ['ind-idli', 'ind-paratha', 'ind-egg', 'ch-momos', 'ch-spring-roll'],
-  Sunday: ['ind-idli', 'ind-paratha', 'co-toast', 'co-fruit-plate', 'co-juice'],
-};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function VegBadge({ type }: { type: VegType }) {
@@ -621,67 +611,6 @@ function StatsBar({ meals }: { meals: Meal[] }) {
   );
 }
 
-// ─── Day-Wise Meals View ──────────────────────────────────────────────────────
-function DayWiseMealsView({ individualMeals, comboMeals }: { individualMeals: Meal[]; comboMeals: Meal[] }) {
-  const allMealItems = [...individualMeals, ...comboMeals];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/20">
-        <Info className="w-4 h-4 text-info shrink-0 mt-0.5" />
-        <p className="text-xs text-info/90 leading-relaxed">
-          <strong>Day-wise Meal Schedule:</strong> This shows meals set by super admin for each day of the week for your company. Working days are based on company configuration.
-        </p>
-      </div>
-      <div className="space-y-3">
-        {allDays.map(day => {
-          const mealIds = defaultDayWiseMeals[day] || [];
-          const meals = mealIds.map(id => allMealItems.find(m => m.id === id)).filter(Boolean) as Meal[];
-          const isWeekend = day === 'Saturday' || day === 'Sunday';
-          return (
-            <Card key={day} className={cn(isWeekend && 'opacity-70')}>
-              <CardHeader className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    {day}
-                    {isWeekend && <Badge variant="secondary" className="text-[9px]">Weekend</Badge>}
-                  </CardTitle>
-                  <Badge variant="outline" className="text-[10px]">{meals.length} meals</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-3 pt-0">
-                {meals.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No meals scheduled</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {meals.map(meal => (
-                      <span
-                        key={meal.id}
-                        className={cn(
-                          'inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-lg border',
-                          meal.mealType === 'combo'
-                            ? 'bg-primary/5 border-primary/20 text-primary'
-                            : meal.vegType === 'veg'
-                              ? 'bg-success/5 border-success/20 text-success'
-                              : 'bg-destructive/5 border-destructive/20 text-destructive',
-                        )}
-                      >
-                        <span className={cn('w-1.5 h-1.5 rounded-full', meal.vegType === 'veg' ? 'bg-success' : 'bg-destructive')} />
-                        {meal.name}
-                        {meal.mealType === 'combo' && ' 🎁'}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function OrderSettings() {
   const { toast } = useToast();
@@ -691,7 +620,7 @@ export default function OrderSettings() {
   const [search, setSearch] = useState('');
   const [vegFilter, setVegFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
   const [saving, setSaving] = useState(false);
-  const [activeView, setActiveView] = useState<'meals' | 'daywise'>('meals');
+  // removed activeView state
 
   // Calendar & schedule
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('monthly');
@@ -774,9 +703,7 @@ export default function OrderSettings() {
     const enabledCount = allMealsList.filter(m => m.enabled).length;
     const dateInfo = scheduleMode === 'monthly'
       ? `for ${format(selectedDate, 'MMMM yyyy')}`
-      : scheduleMode === 'weekly'
-        ? 'for selected week'
-        : `for ${customDates.length} selected date(s)`;
+      : `for ${customDates.length} selected date(s)`;
     toast({
       title: '✅ Availability Saved',
       description: `${enabledCount} meal(s) are now visible to employees ${dateInfo}.`,
@@ -851,33 +778,12 @@ export default function OrderSettings() {
         </div>
       </div>
 
-      {/* ── View Toggle: Meals vs Day-wise ─────────────────────────────── */}
-      <div className="flex items-center gap-1 p-1 bg-muted rounded-xl w-fit">
-        {([
-          { key: 'meals' as const, label: '🍽 Meal Settings', },
-          { key: 'daywise' as const, label: '📅 Day-wise Schedule', },
-        ]).map(v => (
-          <button
-            key={v.key}
-            onClick={() => setActiveView(v.key)}
-            className={cn(
-              'px-5 py-2 rounded-lg text-xs font-semibold transition-all',
-              activeView === v.key ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
 
-      {activeView === 'daywise' ? (
-        <DayWiseMealsView individualMeals={individualMeals} comboMeals={comboMealsList} />
-      ) : (
-        <>
+
           {/* ── Schedule Section ──────────────────────────────────────────── */}
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
             <div className="flex items-center gap-1 p-1 bg-muted rounded-xl">
-              {(['monthly', 'weekly', 'custom'] as ScheduleMode[]).map(sm => (
+              {(['monthly', 'custom'] as ScheduleMode[]).map(sm => (
                 <button
                   key={sm}
                   onClick={() => setScheduleMode(sm)}
@@ -886,7 +792,7 @@ export default function OrderSettings() {
                     scheduleMode === sm ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {sm === 'monthly' ? '📅 Monthly Default' : sm === 'weekly' ? '📆 Weekly' : '🎯 Custom Dates'}
+                  {sm === 'monthly' ? '📅 Monthly Default' : '🎯 Custom Dates'}
                 </button>
               ))}
             </div>
@@ -897,23 +803,14 @@ export default function OrderSettings() {
                   <CalendarIcon className="h-3.5 w-3.5" />
                   {scheduleMode === 'monthly'
                     ? format(selectedDate, 'MMMM yyyy')
-                    : scheduleMode === 'weekly'
-                      ? `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'dd MMM')}`
-                      : customDates.length > 0
-                        ? `${customDates.length} date(s) selected`
-                        : 'Select dates'
+                    : customDates.length > 0
+                      ? `${customDates.length} date(s) selected`
+                      : 'Select dates'
                   }
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 {scheduleMode === 'monthly' ? (
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={d => d && setSelectedDate(d)}
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                ) : scheduleMode === 'weekly' ? (
                   <Calendar
                     mode="single"
                     selected={selectedDate}
@@ -931,19 +828,6 @@ export default function OrderSettings() {
               </PopoverContent>
             </Popover>
 
-            {scheduleMode === 'weekly' && (
-              <div className="flex items-center gap-1 flex-wrap">
-                {Array.from({ length: 7 }, (_, i) => {
-                  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-                  const day = addDays(weekStart, i);
-                  return (
-                    <Badge key={i} variant="outline" className="text-[10px]">
-                      {format(day, 'EEE dd')}
-                    </Badge>
-                  );
-                })}
-              </div>
-            )}
 
             {scheduleMode === 'custom' && customDates.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap">
@@ -1154,9 +1038,7 @@ export default function OrderSettings() {
                     <span className="text-foreground font-medium text-[11px]">
                       {scheduleMode === 'monthly'
                         ? format(selectedDate, 'MMM yyyy')
-                        : scheduleMode === 'weekly'
-                          ? `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'dd MMM')}`
-                          : `${customDates.length} date(s)`
+                        : `${customDates.length} date(s)`
                       }
                     </span>
                   </div>
@@ -1189,7 +1071,7 @@ export default function OrderSettings() {
                     { icon: '🍽', text: 'Individual = single standalone items' },
                     { icon: '🎁', text: 'Combo = bundled meal packages' },
                     { icon: '🕐', text: 'Click meal time pills to choose B/L/D' },
-                    { icon: '📅', text: 'Use Monthly, Weekly, or Custom date scheduling' },
+                    { icon: '📅', text: 'Use Monthly or Custom date scheduling' },
                     { icon: '💾', text: 'Click "Save Changes" to apply' },
                   ].map((item, i) => (
                     <div key={i} className="flex items-start gap-2">
@@ -1205,8 +1087,6 @@ export default function OrderSettings() {
               </Button>
             </div>
           </div>
-        </>
-      )}
 
       {/* Combo Builder Modal */}
       <CreateComboModal
