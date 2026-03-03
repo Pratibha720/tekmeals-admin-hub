@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { employeesApi } from '@/services/api';
 
 interface BulkImportModalProps {
   open: boolean;
@@ -132,29 +133,54 @@ export default function BulkImportModal({ open, onClose, onSuccess }: BulkImport
     const validRows = parsedData.filter(r => r.valid);
     const invalidRows = parsedData.filter(r => !r.valid);
 
-    // Simulate import progress
     const interval = setInterval(() => {
-      setProgress(prev => Math.min(prev + 15, 90));
+      setProgress(prev => Math.min(prev + 10, 90));
     }, 200);
 
-    await new Promise(r => setTimeout(r, 1500));
+    // Actually create each valid employee
+    let successCount = 0;
+    const errors: { row: number; message: string }[] = [];
+
+    for (const row of validRows) {
+      try {
+        const mealTypes = row.mealTypes
+          .split(',')
+          .map(m => m.trim().toLowerCase())
+          .filter(m => ['breakfast', 'lunch', 'dinner', 'snacks'].includes(m)) as any[];
+
+        await employeesApi.create({
+          name: row.name,
+          email: row.email,
+          phone: row.phone || undefined,
+          city: row.city,
+          department: row.department || undefined,
+          mealTypes: mealTypes.length > 0 ? mealTypes : ['lunch'],
+        });
+        successCount++;
+      } catch (err: any) {
+        errors.push({ row: parsedData.indexOf(row) + 2, message: err?.message || 'Failed to create' });
+      }
+    }
+
+    // Add invalid row errors
+    invalidRows.forEach(r => {
+      errors.push({ row: parsedData.indexOf(r) + 2, message: r.error || 'Validation error' });
+    });
+
     clearInterval(interval);
     setProgress(100);
 
     setImportResult({
-      success: validRows.length,
-      failed: invalidRows.length,
-      errors: invalidRows.map((r, i) => ({
-        row: parsedData.indexOf(r) + 2,
-        message: r.error || 'Unknown error',
-      })),
+      success: successCount,
+      failed: invalidRows.length + (validRows.length - successCount),
+      errors,
     });
     setStatus('complete');
 
-    if (validRows.length > 0) {
+    if (successCount > 0) {
       toast({
         title: '✅ Import Completed',
-        description: `Successfully imported ${validRows.length} employees. Super Admin has been notified.`,
+        description: `Successfully imported ${successCount} employees. Super Admin has been notified.`,
       });
     }
   };
@@ -165,8 +191,9 @@ export default function BulkImportModal({ open, onClose, onSuccess }: BulkImport
     setProgress(0);
     setParsedData([]);
     setImportResult(null);
+    const shouldRefresh = status === 'complete' && importResult && importResult.success > 0;
     onClose();
-    if (status === 'complete' && importResult && importResult.success > 0) {
+    if (shouldRefresh) {
       onSuccess();
     }
   };

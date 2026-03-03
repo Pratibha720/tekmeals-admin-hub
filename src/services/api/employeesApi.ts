@@ -220,14 +220,15 @@ export const employeesApi = {
    * Export employees to CSV/Excel
    */
   export: async (format: 'csv' | 'xlsx'): Promise<Blob> => {
-    // TODO: Replace with actual API call
-    // return apiClient.get<Blob>(`/employees/export?format=${format}`);
-    
     return new Promise((resolve) => {
       setTimeout(() => {
-        const content = 'Name,Email,Phone,City,Department,Status\n';
+        const header = 'Employee Name,Email,Phone No,City,Department,Meal Types,Status';
+        const rows = mockEmployees.map(e =>
+          [e.name, e.email, e.phone || '', e.city, e.department || '', e.mealTypes.join(';'), e.status].join(',')
+        );
+        const content = [header, ...rows].join('\n');
         resolve(new Blob([content], { type: 'text/csv' }));
-      }, 500);
+      }, 300);
     });
   },
 
