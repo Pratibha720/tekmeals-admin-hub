@@ -147,6 +147,7 @@ export const employeesApi = {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      mockEmployees.push(newEmployee);
       setTimeout(() => resolve(newEmployee), 500);
     });
   },
