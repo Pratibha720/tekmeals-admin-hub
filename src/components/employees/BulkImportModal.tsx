@@ -114,10 +114,7 @@ export default function BulkImportModal({ open, onClose, onSuccess }: BulkImport
   };
 
   const handleDownloadSample = () => {
-    const csvContent = [
-      SAMPLE_COLUMNS.join(','),
-      ...SAMPLE_DATA.map(row => row.join(',')),
-    ].join('\n');
+    const csvContent = SAMPLE_COLUMNS.join(',');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
