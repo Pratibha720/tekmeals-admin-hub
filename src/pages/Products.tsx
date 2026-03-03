@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { Search, Plus, Download, Eye, Edit, RotateCcw, Package, CheckCircle, XCircle, CalendarDays, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -432,17 +433,20 @@ export default function Products() {
           )}
         </TabsContent>
 
-        {/* Weekly Meal Planner */}
-        <TabsContent value="weekly" className="space-y-4 mt-4">
-          <div className="flex items-center justify-between">
+        {/* Weekly Meal Planner — Corporate B2B Redesign */}
+        <TabsContent value="weekly" className="space-y-6 mt-4">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border pb-4">
             <div>
-              <h2 className="text-lg font-semibold">Company Weekly Meal Planner</h2>
-              <p className="text-sm text-muted-foreground">Assign products to each day of the week for employees</p>
+              <h2 className="text-base font-bold tracking-tight uppercase">Weekly Meal Planner</h2>
+              <p className="text-xs text-muted-foreground mt-1">Assign products to each day of the week for employees</p>
             </div>
-            <Button onClick={saveWeeklyPlan} size="sm">💾 Save Plan</Button>
+            <Button onClick={saveWeeklyPlan} className="h-10 px-6 text-sm font-semibold">
+              Save Plan
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {allDays.map(day => {
               const dayProductIds = weeklyPlan[day] || [];
               const dayProducts = dayProductIds.map(id => products.find(p => p.id === id)).filter(Boolean) as Product[];
@@ -450,50 +454,76 @@ export default function Products() {
               const isWeekend = day === 'Saturday' || day === 'Sunday';
 
               return (
-                <Card key={day} className={isWeekend ? 'opacity-80' : ''}>
-                  <CardHeader className="py-3 px-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        {day}
-                        {isWeekend && <Badge variant="secondary" className="text-[9px]">Weekend</Badge>}
-                      </CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">{dayProducts.length} items</Badge>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingDay(isEditing ? null : day)}>
-                          {isEditing ? 'Done' : 'Edit'}
-                        </Button>
-                      </div>
+                <div
+                  key={day}
+                  className={cn(
+                    'border border-border bg-card overflow-hidden rounded-lg',
+                    isEditing && 'border-l-[3px] border-l-primary bg-primary/[0.02]',
+                    isWeekend && 'opacity-70',
+                  )}
+                >
+                  {/* Day Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-foreground">{day}</span>
+                      {isWeekend && <span className="text-[10px] text-muted-foreground font-medium">Weekend</span>}
                     </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3 pt-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-muted-foreground font-medium">{dayProducts.length} items</span>
+                      <button
+                        onClick={() => setEditingDay(isEditing ? null : day)}
+                        className={cn(
+                          'text-[11px] font-semibold px-2.5 py-1 rounded border transition-colors',
+                          isEditing
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
+                        )}
+                      >
+                        {isEditing ? 'Done' : 'Edit'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Day Content */}
+                  <div className="px-4 py-3">
                     {isEditing ? (
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {products.filter(p => p.isAvailable).map(product => (
-                          <label key={product.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/50 cursor-pointer">
-                            <Checkbox
-                              checked={dayProductIds.includes(product.id)}
-                              onCheckedChange={() => toggleDayProduct(day, product.id)}
-                            />
-                            <span className="text-xs">{product.tags?.includes('veg') ? '🟢' : '🔴'}</span>
-                            <span className="text-xs font-medium">{product.name}</span>
-                            <span className="text-[10px] text-muted-foreground ml-auto">{formatCurrency(product.price)}</span>
-                          </label>
-                        ))}
+                      <div className="space-y-0 max-h-52 overflow-y-auto scrollbar-thin -mx-1 px-1">
+                        {products.filter(p => p.isAvailable).map(product => {
+                          const isVeg = product.tags?.includes('veg');
+                          return (
+                            <label
+                              key={product.id}
+                              className="flex items-center gap-3 py-2 px-2 border-b border-border/50 last:border-b-0 cursor-pointer hover:bg-muted/30 transition-colors"
+                            >
+                              <Checkbox
+                                checked={dayProductIds.includes(product.id)}
+                                onCheckedChange={() => toggleDayProduct(day, product.id)}
+                              />
+                              <span className={cn('w-2 h-2 rounded-sm shrink-0', isVeg ? 'bg-success' : 'bg-destructive')} />
+                              <span className="text-xs font-medium text-foreground flex-1 truncate">{product.name}</span>
+                              <span className="text-[11px] text-muted-foreground font-medium tabular-nums">{formatCurrency(product.price)}</span>
+                            </label>
+                          );
+                        })}
                       </div>
                     ) : dayProducts.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-2">No meals assigned</p>
+                      <p className="text-xs text-muted-foreground py-3 text-center">No meals assigned</p>
                     ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {dayProducts.map(product => (
-                          <Badge key={product.id} variant="outline" className="text-[10px] gap-1">
-                            <span>{product.tags?.includes('veg') ? '🟢' : '🔴'}</span>
-                            {product.name}
-                          </Badge>
-                        ))}
+                      <div className="space-y-0">
+                        {dayProducts.map(product => {
+                          const isVeg = product.tags?.includes('veg');
+                          return (
+                            <div key={product.id} className="flex items-center gap-3 py-2 border-b border-border/40 last:border-b-0">
+                              <span className={cn('w-2 h-2 rounded-sm shrink-0', isVeg ? 'bg-success' : 'bg-destructive')} />
+                              <span className="text-xs font-medium text-foreground flex-1 truncate">{product.name}</span>
+                              <span className="text-[11px] text-muted-foreground font-medium tabular-nums">{formatCurrency(product.price)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>
