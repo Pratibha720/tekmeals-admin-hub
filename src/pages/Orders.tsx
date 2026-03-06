@@ -113,16 +113,62 @@ export default function Orders() {
     navigate(tabToRoute[value] || '/orders');
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
     try {
-      const blob = await ordersApi.exportOrders({}, 'csv');
+      let csvContent = '';
+      let filename = '';
+
+      if (isGroceriesTab) {
+        // Export grocery orders
+        const allGroceryOrders = [...mockGroceryOrders, ...groceryPlacedOrders.map(o => ({
+          id: o.id, orderNumber: o.orderNumber, vendor: o.customerName, city: o.city,
+          items: o.items, totalAmount: o.totalAmount, orderDate: o.orderDate,
+          status: o.status as string, deliveryDate: '',
+        }))];
+        csvContent = 'Order Number,Vendor,City,Items,Amount,Order Date,Status\n';
+        allGroceryOrders.forEach(o => {
+          csvContent += `${o.orderNumber},${o.vendor},${o.city},${o.items},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+        });
+        filename = `grocery-orders-${new Date().toISOString().split('T')[0]}.csv`;
+      } else if (isGuestOrCustomTab) {
+        // Export custom/guest orders
+        const allCustomOrders = [
+          ...orders.map(o => ({
+            orderNumber: o.orderNumber, name: o.employeeName, type: o.type,
+            city: o.city, items: o.totalQuantity, amount: o.totalAmount,
+            date: o.orderDate, status: o.status,
+          })),
+          ...customGuestPlacedOrders.map(o => ({
+            orderNumber: o.orderNumber, name: o.customerName, type: o.type,
+            city: o.city, items: o.items, amount: o.totalAmount,
+            date: o.orderDate, status: o.status,
+          })),
+        ];
+        csvContent = 'Order Number,Customer Name,Type,City,Items,Amount,Order Date,Status\n';
+        allCustomOrders.forEach(o => {
+          csvContent += `${o.orderNumber},${o.name},${o.type},${o.city},${o.items},${o.amount},${new Date(o.date).toLocaleDateString('en-IN')},${o.status}\n`;
+        });
+        filename = `custom-guest-orders-${new Date().toISOString().split('T')[0]}.csv`;
+      } else {
+        // Export all orders
+        csvContent = 'Order Number,Employee,Email,City,Type,Items,Amount,Order Date,Status\n';
+        orders.forEach(o => {
+          csvContent += `${o.orderNumber},${o.employeeName},${o.employeeEmail},${o.city},${o.type},${o.totalQuantity},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+        });
+        filename = `orders-${new Date().toISOString().split('T')[0]}.csv`;
+      }
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `orders-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = filename;
       a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Export successful', description: `File downloaded: ${filename}` });
     } catch (error) {
       console.error('Failed to export orders:', error);
+      toast({ title: 'Export failed', variant: 'destructive' });
     }
   };
 
