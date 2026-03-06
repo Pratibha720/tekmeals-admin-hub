@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 interface OrderItem {
   id: string;
   name: string;
+  category: string;
   quantity: number;
   unitPrice: number;
 }
@@ -25,22 +26,70 @@ interface PlaceGuestOrderModalProps {
   onOrderPlaced?: (data: { name: string; type: 'guest' | 'custom'; city: string; items: number; total: number }) => void;
 }
 
-const menuItems = [
-  { name: 'Butter Chicken', price: 250 },
-  { name: 'Paneer Butter Masala', price: 200 },
-  { name: 'Dal Makhani', price: 160 },
-  { name: 'Veg Biryani', price: 180 },
-  { name: 'Chicken Biryani', price: 240 },
-  { name: 'Naan', price: 40 },
-  { name: 'Roti', price: 20 },
-  { name: 'Fried Rice', price: 170 },
-  { name: 'Manchurian', price: 130 },
-  { name: 'Momos (6 pcs)', price: 120 },
-  { name: 'Pasta', price: 200 },
-  { name: 'Caesar Salad', price: 150 },
-];
+// Static category → items data (will be replaced with DB later)
+const menuCategories = ['North Indian', 'South Indian', 'Chinese', 'Continental', 'Snacks', 'Breads', 'Rice & Biryani', 'Beverages'];
+
+const menuItemsByCategory: Record<string, { name: string; price: number }[]> = {
+  'North Indian': [
+    { name: 'Butter Chicken', price: 250 },
+    { name: 'Paneer Butter Masala', price: 200 },
+    { name: 'Dal Makhani', price: 160 },
+    { name: 'Kadai Paneer', price: 210 },
+    { name: 'Chole Bhature', price: 150 },
+    { name: 'Malai Kofta', price: 220 },
+  ],
+  'South Indian': [
+    { name: 'Masala Dosa', price: 100 },
+    { name: 'Idli Sambar', price: 80 },
+    { name: 'Uttapam', price: 90 },
+    { name: 'Vada Sambar', price: 70 },
+    { name: 'Rava Dosa', price: 110 },
+  ],
+  Chinese: [
+    { name: 'Fried Rice', price: 170 },
+    { name: 'Manchurian', price: 130 },
+    { name: 'Momos (6 pcs)', price: 120 },
+    { name: 'Hakka Noodles', price: 150 },
+    { name: 'Chilli Paneer', price: 180 },
+  ],
+  Continental: [
+    { name: 'Pasta', price: 200 },
+    { name: 'Caesar Salad', price: 150 },
+    { name: 'Grilled Sandwich', price: 120 },
+    { name: 'Soup of the Day', price: 100 },
+  ],
+  Snacks: [
+    { name: 'Samosa (2 pcs)', price: 40 },
+    { name: 'Pakoda', price: 60 },
+    { name: 'Spring Roll (4 pcs)', price: 90 },
+    { name: 'French Fries', price: 100 },
+  ],
+  Breads: [
+    { name: 'Naan', price: 40 },
+    { name: 'Roti', price: 20 },
+    { name: 'Garlic Naan', price: 50 },
+    { name: 'Paratha', price: 45 },
+    { name: 'Kulcha', price: 50 },
+  ],
+  'Rice & Biryani': [
+    { name: 'Veg Biryani', price: 180 },
+    { name: 'Chicken Biryani', price: 240 },
+    { name: 'Jeera Rice', price: 100 },
+    { name: 'Steamed Rice', price: 80 },
+  ],
+  Beverages: [
+    { name: 'Masala Chai', price: 30 },
+    { name: 'Coffee', price: 50 },
+    { name: 'Fresh Lime Soda', price: 60 },
+    { name: 'Lassi', price: 70 },
+    { name: 'Buttermilk', price: 40 },
+  ],
+};
 
 const cities = ['Pune', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai'];
+
+// Simulated default delivery location from DB
+const defaultDeliveryLocation = 'TekMeals Central Kitchen, Hinjewadi Phase 1, Pune';
 
 export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlaced }: PlaceGuestOrderModalProps) {
   const { toast } = useToast();
@@ -52,14 +101,16 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
   const [city, setCity] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState(defaultDeliveryLocation);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<OrderItem[]>([
-    { id: '1', name: '', quantity: 1, unitPrice: 0 },
+    { id: '1', name: '', category: '', quantity: 1, unitPrice: 0 },
   ]);
 
-  const addItem = () => {
-    setItems(prev => [...prev, { id: Date.now().toString(), name: '', quantity: 1, unitPrice: 0 }]);
+  const addItemAfter = (afterId: string) => {
+    const idx = items.findIndex(i => i.id === afterId);
+    const newItem: OrderItem = { id: Date.now().toString(), name: '', category: '', quantity: 1, unitPrice: 0 };
+    setItems(prev => [...prev.slice(0, idx + 1), newItem, ...prev.slice(idx + 1)]);
   };
 
   const removeItem = (id: string) => {
@@ -71,8 +122,14 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
   };
 
-  const handleMenuSelect = (id: string, name: string) => {
-    const found = menuItems.find(m => m.name === name);
+  const handleCategorySelect = (id: string, category: string) => {
+    updateItem(id, { category, name: '', unitPrice: 0 });
+  };
+
+  const handleItemSelect = (id: string, name: string) => {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const found = menuItemsByCategory[item.category]?.find(m => m.name === name);
     updateItem(id, { name, unitPrice: found?.price ?? 0 });
   };
 
@@ -85,12 +142,12 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
   const resetForm = () => {
     setGuestName(''); setGuestEmail(''); setGuestPhone('');
     setCity(''); setDeliveryDate(''); setDeliveryTime('');
-    setDeliveryAddress(''); setNotes('');
-    setItems([{ id: '1', name: '', quantity: 1, unitPrice: 0 }]);
+    setDeliveryAddress(defaultDeliveryLocation); setNotes('');
+    setItems([{ id: '1', name: '', category: '', quantity: 1, unitPrice: 0 }]);
   };
 
   const handleSubmit = async () => {
-    if (!guestName || !city || !deliveryDate || items.some(i => !i.name)) {
+    if (!guestName || !city || !deliveryDate || items.some(i => !i.name || !i.category)) {
       toast({ title: 'Please fill required fields', variant: 'destructive' });
       return;
     }
@@ -180,7 +237,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label className="text-xs">Delivery Address</Label>
-                <Input placeholder="Building, street, area..." value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} className="h-9 text-sm" />
+                <Input value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} className="h-9 text-sm" />
               </div>
             </div>
           </div>
@@ -193,51 +250,74 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Order Items <span className="text-destructive">*</span>
               </p>
-              <Button type="button" variant="outline" size="sm" onClick={addItem} className="h-7 text-xs gap-1">
-                <Plus className="w-3 h-3" /> Add Item
-              </Button>
             </div>
 
             <div className="space-y-2">
               <div className="grid grid-cols-12 gap-2 px-1">
-                <p className="col-span-5 text-[10px] font-medium text-muted-foreground">Item</p>
+                <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Category</p>
+                <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Item</p>
                 <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Qty</p>
-                <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Unit Price (₹)</p>
-                <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Total</p>
+                <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Unit Price (₹)</p>
+                <p className="col-span-1 text-[10px] font-medium text-muted-foreground">Total</p>
+                <p className="col-span-1"></p>
               </div>
 
-              {items.map(item => (
-                <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-5">
-                    <Select value={item.name} onValueChange={v => handleMenuSelect(item.id, v)}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select item" /></SelectTrigger>
-                      <SelectContent>
-                        {menuItems.map(m => (
-                          <SelectItem key={m.name} value={m.name} className="text-xs">{m.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {items.map(item => {
+                const categoryItems = item.category ? (menuItemsByCategory[item.category] || []) : [];
+                return (
+                  <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-3">
+                      <Select value={item.category} onValueChange={v => handleCategorySelect(item.id, v)}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
+                        <SelectContent>
+                          {menuCategories.map(c => (
+                            <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-3">
+                      <Select
+                        value={item.name}
+                        onValueChange={v => handleItemSelect(item.id, v)}
+                        disabled={!item.category}
+                      >
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={item.category ? 'Select item' : 'Pick category'} /></SelectTrigger>
+                        <SelectContent>
+                          {categoryItems.map(m => (
+                            <SelectItem key={m.name} value={m.name} className="text-xs">{m.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })} className="h-8 text-xs text-center" />
+                    </div>
+                    <div className="col-span-2">
+                      <Input type="number" min={0} value={item.unitPrice || ''} onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" placeholder="0" />
+                    </div>
+                    <div className="col-span-1 text-xs font-medium text-foreground text-right">
+                      ₹{item.quantity * item.unitPrice}
+                    </div>
+                    <div className="col-span-1 flex justify-center gap-1">
+                      <button
+                        onClick={() => addItemAfter(item.id)}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        title="Add item below"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className={cn('text-muted-foreground hover:text-destructive transition-colors', items.length === 1 && 'opacity-30 cursor-not-allowed')}
+                        disabled={items.length === 1}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })} className="h-8 text-xs text-center" />
-                  </div>
-                  <div className="col-span-3">
-                    <Input type="number" min={0} value={item.unitPrice || ''} onChange={e => updateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })} className="h-8 text-xs" placeholder="0" />
-                  </div>
-                  <div className="col-span-1 text-xs font-medium text-foreground text-right">
-                    ₹{item.quantity * item.unitPrice}
-                  </div>
-                  <div className="col-span-1 flex justify-center">
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className={cn('text-muted-foreground hover:text-destructive transition-colors', items.length === 1 && 'opacity-30 cursor-not-allowed')}
-                      disabled={items.length === 1}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -266,7 +346,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={() => { resetForm(); onClose(); }} className="text-sm">Cancel</Button>
             <Button onClick={handleSubmit} disabled={saving} className="text-sm">
-              {saving ? 'Submitting…' : `Submit for Approval`}
+              {saving ? 'Submitting…' : 'Submit for Approval'}
             </Button>
           </div>
         </div>
