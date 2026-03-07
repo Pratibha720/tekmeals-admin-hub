@@ -113,13 +113,20 @@ export default function Orders() {
     navigate(tabToRoute[value] || '/orders');
   };
 
+  const formatExportDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = d.toLocaleString('en-IN', { month: 'short' });
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   const handleExport = () => {
     try {
       let csvContent = '';
       let filename = '';
 
       if (isGroceriesTab) {
-        // Export grocery orders
         const allGroceryOrders = [...mockGroceryOrders, ...groceryPlacedOrders.map(o => ({
           id: o.id, orderNumber: o.orderNumber, vendor: o.customerName, city: o.city,
           items: o.items, totalAmount: o.totalAmount, orderDate: o.orderDate,
@@ -127,11 +134,10 @@ export default function Orders() {
         }))];
         csvContent = 'Order Number,Vendor,City,Items,Amount,Order Date,Status\n';
         allGroceryOrders.forEach(o => {
-          csvContent += `${o.orderNumber},${o.vendor},${o.city},${o.items},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+          csvContent += `${o.orderNumber},"${o.vendor}",${o.city},${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
         });
         filename = `grocery-orders-${new Date().toISOString().split('T')[0]}.csv`;
       } else if (isGuestOrCustomTab) {
-        // Export custom/guest orders
         const allCustomOrders = [
           ...orders.map(o => ({
             orderNumber: o.orderNumber, name: o.employeeName, type: o.type,
@@ -146,23 +152,20 @@ export default function Orders() {
         ];
         csvContent = 'Order Number,Customer Name,Type,City,Items,Amount,Order Date,Status\n';
         allCustomOrders.forEach(o => {
-          csvContent += `${o.orderNumber},${o.name},${o.type},${o.city},${o.items},${o.amount},${new Date(o.date).toLocaleDateString('en-IN')},${o.status}\n`;
+          csvContent += `${o.orderNumber},"${o.name}",${o.type},${o.city},${o.items},${o.amount},"${formatExportDate(o.date)}",${o.status}\n`;
         });
         filename = `custom-guest-orders-${new Date().toISOString().split('T')[0]}.csv`;
       } else {
-        // Export all/today orders — include both API orders and locally placed orders
         csvContent = 'Order Number,Employee/Customer,Email,City,Type,Items,Amount,Order Date,Status\n';
         orders.forEach(o => {
-          csvContent += `${o.orderNumber},"${o.employeeName}","${o.employeeEmail}",${o.city},${o.type},${o.totalQuantity},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+          csvContent += `${o.orderNumber},"${o.employeeName}","${o.employeeEmail}",${o.city},${o.type},${o.totalQuantity},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
         });
-        // Include locally placed custom/guest/grocery orders
         placedOrders.forEach(o => {
-          csvContent += `${o.orderNumber},"${o.customerName}","",${o.city},${o.type},${o.items},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+          csvContent += `${o.orderNumber},"${o.customerName}","",${o.city},${o.type},${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
         });
-        // Include mock grocery orders for "all" tab
         if (activeTab === 'all') {
           mockGroceryOrders.forEach(o => {
-            csvContent += `${o.orderNumber},"${o.vendor}","",${o.city},grocery,${o.items},${o.totalAmount},${new Date(o.orderDate).toLocaleDateString('en-IN')},${o.status}\n`;
+            csvContent += `${o.orderNumber},"${o.vendor}","",${o.city},grocery,${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
           });
         }
         filename = `${activeTab === 'today' ? 'today-' : ''}orders-${new Date().toISOString().split('T')[0]}.csv`;
