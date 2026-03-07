@@ -15,6 +15,7 @@ interface OrderItem {
   id: string;
   name: string;
   category: string;
+  subCategory: string;
   quantity: number;
   unitPrice: number;
 }
@@ -26,10 +27,18 @@ interface PlaceGuestOrderModalProps {
   onOrderPlaced?: (data: { name: string; type: 'guest' | 'custom'; city: string; items: number; total: number }) => void;
 }
 
-// Static category → items data (will be replaced with DB later)
-const menuCategories = ['North Indian', 'South Indian', 'Chinese', 'Continental', 'Snacks', 'Breads', 'Rice & Biryani', 'Beverages'];
+// Static data: Category → Sub-category → Items (will be replaced with DB later)
+const menuCategories = ['Indian', 'Chinese', 'Continental', 'Snacks & Sides', 'Beverages'];
 
-const menuItemsByCategory: Record<string, { name: string; price: number }[]> = {
+const subCategoriesByCategory: Record<string, string[]> = {
+  'Indian': ['North Indian', 'South Indian', 'Breads', 'Rice & Biryani'],
+  'Chinese': ['Starters', 'Main Course', 'Noodles & Rice'],
+  'Continental': ['Pasta & Salads', 'Sandwiches & Soups'],
+  'Snacks & Sides': ['Fried Snacks', 'Healthy Snacks'],
+  'Beverages': ['Hot Beverages', 'Cold Beverages'],
+};
+
+const itemsBySubCategory: Record<string, { name: string; price: number }[]> = {
   'North Indian': [
     { name: 'Butter Chicken', price: 250 },
     { name: 'Paneer Butter Masala', price: 200 },
@@ -45,26 +54,7 @@ const menuItemsByCategory: Record<string, { name: string; price: number }[]> = {
     { name: 'Vada Sambar', price: 70 },
     { name: 'Rava Dosa', price: 110 },
   ],
-  Chinese: [
-    { name: 'Fried Rice', price: 170 },
-    { name: 'Manchurian', price: 130 },
-    { name: 'Momos (6 pcs)', price: 120 },
-    { name: 'Hakka Noodles', price: 150 },
-    { name: 'Chilli Paneer', price: 180 },
-  ],
-  Continental: [
-    { name: 'Pasta', price: 200 },
-    { name: 'Caesar Salad', price: 150 },
-    { name: 'Grilled Sandwich', price: 120 },
-    { name: 'Soup of the Day', price: 100 },
-  ],
-  Snacks: [
-    { name: 'Samosa (2 pcs)', price: 40 },
-    { name: 'Pakoda', price: 60 },
-    { name: 'Spring Roll (4 pcs)', price: 90 },
-    { name: 'French Fries', price: 100 },
-  ],
-  Breads: [
+  'Breads': [
     { name: 'Naan', price: 40 },
     { name: 'Roti', price: 20 },
     { name: 'Garlic Naan', price: 50 },
@@ -77,9 +67,44 @@ const menuItemsByCategory: Record<string, { name: string; price: number }[]> = {
     { name: 'Jeera Rice', price: 100 },
     { name: 'Steamed Rice', price: 80 },
   ],
-  Beverages: [
+  'Starters': [
+    { name: 'Manchurian', price: 130 },
+    { name: 'Chilli Paneer', price: 180 },
+    { name: 'Momos (6 pcs)', price: 120 },
+    { name: 'Spring Roll (4 pcs)', price: 90 },
+  ],
+  'Main Course': [
+    { name: 'Schezwan Paneer', price: 200 },
+    { name: 'Mixed Vegetables in Garlic Sauce', price: 190 },
+  ],
+  'Noodles & Rice': [
+    { name: 'Hakka Noodles', price: 150 },
+    { name: 'Fried Rice', price: 170 },
+    { name: 'Schezwan Noodles', price: 160 },
+  ],
+  'Pasta & Salads': [
+    { name: 'Pasta', price: 200 },
+    { name: 'Caesar Salad', price: 150 },
+  ],
+  'Sandwiches & Soups': [
+    { name: 'Grilled Sandwich', price: 120 },
+    { name: 'Soup of the Day', price: 100 },
+  ],
+  'Fried Snacks': [
+    { name: 'Samosa (2 pcs)', price: 40 },
+    { name: 'Pakoda', price: 60 },
+    { name: 'French Fries', price: 100 },
+  ],
+  'Healthy Snacks': [
+    { name: 'Fruit Bowl', price: 80 },
+    { name: 'Sprouts Chaat', price: 60 },
+  ],
+  'Hot Beverages': [
     { name: 'Masala Chai', price: 30 },
     { name: 'Coffee', price: 50 },
+    { name: 'Green Tea', price: 40 },
+  ],
+  'Cold Beverages': [
     { name: 'Fresh Lime Soda', price: 60 },
     { name: 'Lassi', price: 70 },
     { name: 'Buttermilk', price: 40 },
@@ -88,7 +113,6 @@ const menuItemsByCategory: Record<string, { name: string; price: number }[]> = {
 
 const cities = ['Pune', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai'];
 
-// Simulated default delivery location from DB
 const defaultDeliveryLocation = 'TekMeals Central Kitchen, Hinjewadi Phase 1, Pune';
 
 export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlaced }: PlaceGuestOrderModalProps) {
@@ -104,12 +128,12 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
   const [deliveryAddress, setDeliveryAddress] = useState(defaultDeliveryLocation);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<OrderItem[]>([
-    { id: '1', name: '', category: '', quantity: 1, unitPrice: 0 },
+    { id: '1', name: '', category: '', subCategory: '', quantity: 1, unitPrice: 0 },
   ]);
 
   const addItemAfter = (afterId: string) => {
     const idx = items.findIndex(i => i.id === afterId);
-    const newItem: OrderItem = { id: Date.now().toString(), name: '', category: '', quantity: 1, unitPrice: 0 };
+    const newItem: OrderItem = { id: Date.now().toString(), name: '', category: '', subCategory: '', quantity: 1, unitPrice: 0 };
     setItems(prev => [...prev.slice(0, idx + 1), newItem, ...prev.slice(idx + 1)]);
   };
 
@@ -123,13 +147,17 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
   };
 
   const handleCategorySelect = (id: string, category: string) => {
-    updateItem(id, { category, name: '', unitPrice: 0 });
+    updateItem(id, { category, subCategory: '', name: '', unitPrice: 0 });
+  };
+
+  const handleSubCategorySelect = (id: string, subCategory: string) => {
+    updateItem(id, { subCategory, name: '', unitPrice: 0 });
   };
 
   const handleItemSelect = (id: string, name: string) => {
     const item = items.find(i => i.id === id);
     if (!item) return;
-    const found = menuItemsByCategory[item.category]?.find(m => m.name === name);
+    const found = itemsBySubCategory[item.subCategory]?.find(m => m.name === name);
     updateItem(id, { name, unitPrice: found?.price ?? 0 });
   };
 
@@ -143,11 +171,11 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
     setGuestName(''); setGuestEmail(''); setGuestPhone('');
     setCity(''); setDeliveryDate(''); setDeliveryTime('');
     setDeliveryAddress(defaultDeliveryLocation); setNotes('');
-    setItems([{ id: '1', name: '', category: '', quantity: 1, unitPrice: 0 }]);
+    setItems([{ id: '1', name: '', category: '', subCategory: '', quantity: 1, unitPrice: 0 }]);
   };
 
   const handleSubmit = async () => {
-    if (!guestName || !city || !deliveryDate || items.some(i => !i.name || !i.category)) {
+    if (!guestName || !city || !deliveryDate || items.some(i => !i.name || !i.category || !i.subCategory)) {
       toast({ title: 'Please fill required fields', variant: 'destructive' });
       return;
     }
@@ -156,13 +184,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
     setSaving(false);
 
     if (onOrderPlaced) {
-      onOrderPlaced({
-        name: guestName,
-        type,
-        city,
-        items: totalQty,
-        total: totalAmount,
-      });
+      onOrderPlaced({ name: guestName, type, city, items: totalQty, total: totalAmount });
     }
 
     resetForm();
@@ -173,7 +195,7 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
 
   return (
     <Dialog open={open} onOpenChange={() => { resetForm(); onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-primary" />
@@ -254,19 +276,21 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
 
             <div className="space-y-2">
               <div className="grid grid-cols-12 gap-2 px-1">
-                <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Category</p>
+                <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Category</p>
+                <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Sub-Category</p>
                 <p className="col-span-3 text-[10px] font-medium text-muted-foreground">Item</p>
-                <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Qty</p>
+                <p className="col-span-1 text-[10px] font-medium text-muted-foreground">Qty</p>
                 <p className="col-span-2 text-[10px] font-medium text-muted-foreground">Unit Price (₹)</p>
                 <p className="col-span-1 text-[10px] font-medium text-muted-foreground">Total</p>
                 <p className="col-span-1"></p>
               </div>
 
               {items.map(item => {
-                const categoryItems = item.category ? (menuItemsByCategory[item.category] || []) : [];
+                const subCategories = item.category ? (subCategoriesByCategory[item.category] || []) : [];
+                const availableItems = item.subCategory ? (itemsBySubCategory[item.subCategory] || []) : [];
                 return (
                   <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <Select value={item.category} onValueChange={v => handleCategorySelect(item.id, v)}>
                         <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
                         <SelectContent>
@@ -276,21 +300,35 @@ export default function PlaceGuestOrderModal({ open, onClose, type, onOrderPlace
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <Select
-                        value={item.name}
-                        onValueChange={v => handleItemSelect(item.id, v)}
+                        value={item.subCategory}
+                        onValueChange={v => handleSubCategorySelect(item.id, v)}
                         disabled={!item.category}
                       >
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={item.category ? 'Select item' : 'Pick category'} /></SelectTrigger>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={item.category ? 'Sub-category' : 'Pick category'} /></SelectTrigger>
                         <SelectContent>
-                          {categoryItems.map(m => (
-                            <SelectItem key={m.name} value={m.name} className="text-xs">{m.name}</SelectItem>
+                          {subCategories.map(sc => (
+                            <SelectItem key={sc} value={sc} className="text-xs">{sc}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-3">
+                      <Select
+                        value={item.name}
+                        onValueChange={v => handleItemSelect(item.id, v)}
+                        disabled={!item.subCategory}
+                      >
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={item.subCategory ? 'Select item' : 'Pick sub-category'} /></SelectTrigger>
+                        <SelectContent>
+                          {availableItems.map(m => (
+                            <SelectItem key={m.name} value={m.name} className="text-xs">{m.name} — ₹{m.price}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1">
                       <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })} className="h-8 text-xs text-center" />
                     </div>
                     <div className="col-span-2">
