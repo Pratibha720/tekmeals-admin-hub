@@ -163,11 +163,7 @@ export default function Orders() {
         placedOrders.forEach(o => {
           csvContent += `${o.orderNumber},"${o.customerName}","",${o.city},${o.type},${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
         });
-        if (activeTab === 'all') {
-          mockGroceryOrders.forEach(o => {
-            csvContent += `${o.orderNumber},"${o.vendor}","",${o.city},grocery,${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
-          });
-        }
+        // Only export what's visible in the table — grocery orders have their own tab
         filename = `${activeTab === 'today' ? 'today-' : ''}orders-${new Date().toISOString().split('T')[0]}.csv`;
       }
 
@@ -178,7 +174,7 @@ export default function Orders() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: 'Export successful', description: `File downloaded: ${filename}` });
+      toast({ title: 'Export successful', description: `File downloaded: ${filename}`, duration: 3000 });
     } catch (error) {
       console.error('Failed to export orders:', error);
       toast({ title: 'Export failed', variant: 'destructive' });
