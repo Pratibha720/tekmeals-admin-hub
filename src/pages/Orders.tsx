@@ -174,7 +174,7 @@ export default function Orders() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: 'Export successful', description: `File downloaded: ${filename}` });
+      toast({ title: 'Export successful', description: `File downloaded: ${filename}`, duration: 3000 });
     } catch (error) {
       console.error('Failed to export orders:', error);
       toast({ title: 'Export failed', variant: 'destructive' });
