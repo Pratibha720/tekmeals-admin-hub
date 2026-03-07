@@ -163,11 +163,7 @@ export default function Orders() {
         placedOrders.forEach(o => {
           csvContent += `${o.orderNumber},"${o.customerName}","",${o.city},${o.type},${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
         });
-        if (activeTab === 'all') {
-          mockGroceryOrders.forEach(o => {
-            csvContent += `${o.orderNumber},"${o.vendor}","",${o.city},grocery,${o.items},${o.totalAmount},"${formatExportDate(o.orderDate)}",${o.status}\n`;
-          });
-        }
+        // Only export what's visible in the table — grocery orders have their own tab
         filename = `${activeTab === 'today' ? 'today-' : ''}orders-${new Date().toISOString().split('T')[0]}.csv`;
       }
 
